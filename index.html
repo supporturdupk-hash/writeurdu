@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Write Urdu online in a clean editor with right-to-left typing, private local saving, templates, and print support.">
+  <meta name="theme-color" content="#ffffff">
+  <meta property="og:title" content="Urdu Writer — Online Urdu Editor">
+  <meta property="og:description" content="A private Urdu writing workspace with right-to-left text support.">
+  <title>Urdu Writer — Online Urdu Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/home.css">
+  <script src="assets/js/home.js" defer></script>
+</head>
+<body>
+  <header class="home-header" dir="ltr">
+    <a class="home-brand" href="index.html">Urdu Writer</a>
+    <nav class="header-nav" aria-label="Main navigation">
+      <a href="index.html" aria-current="page">Home</a>
+      <a href="urdu-writing-guide.html">Writing guide</a>
+      <a href="feedback.html">Feedback</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <button id="login-button" class="header-start" type="button">Login</button>
+  </header>
+
+  <main>
+    <section class="welcome-band">
+      <div class="welcome-inner">
+        <div class="welcome-copy">
+          <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> A focused workspace for Urdu</p>
+          <h1>Write in Urdu.<br><span>Without limits.</span></h1>
+          <p class="welcome-description">A thoughtfully simple editor for your letters, ideas, and everyday writing. Type right to left, save as you go, and print when you’re ready.</p>
+          <div class="welcome-actions">
+            <a class="create-button" href="editor.html?new=1"><span class="plus-icon">＋</span> Create a document</a>
+            <button id="upload-button" class="upload-button" type="button"><span>↑</span> Open a TXT file</button>
+            <input id="upload-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
+          </div>
+          <p class="private-note"><span aria-hidden="true">✓</span> Private by design <i></i> Auto-saved on this device</p>
+        </div>
+        <div class="hero-product" aria-label="Preview of the Urdu Writer document editor">
+          <div class="hero-editor">
+            <div class="hero-editor-top">
+              <div class="hero-document-title"><strong>Untitled document</strong><small>Saved on this device</small></div>
+              <span class="hero-save-indicator"><i></i> Saved</span>
+            </div>
+            <div class="hero-toolbar" aria-hidden="true">
+              <span class="hero-font-select">Noto Nastaliq Urdu <b>⌄</b></span>
+              <span class="hero-font-size">18 <b>⌄</b></span>
+              <i></i><b>B</b><em>I</em><u>U</u><i></i><span>≡</span><span>↔</span>
+            </div>
+            <div class="hero-paper">
+              <article lang="ur" dir="rtl">
+                <h2>اپنے خیالات لکھیے</h2>
+                <p>ہر بڑی تحریر ایک چھوٹے سے خیال سے شروع ہوتی ہے۔ اپنے لفظوں کو جگہ دیں اور انہیں خوبصورتی سے صفحے پر اتاریں۔</p>
+                <p>اردو میں لکھنا اب پہلے سے زیادہ آسان ہے۔</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="home-content">
+      <section class="recent-section" id="recent">
+        <div class="section-heading">
+          <div><p class="section-kicker">Pick up where you left off</p><h2>Saved files</h2></div>
+          <a class="subtle-link" href="editor.html?new=1">Create a new document ↗</a>
+        </div>
+        <div id="saved-files-grid" class="saved-files-grid"></div>
+        <div id="empty-recent" class="empty-recent">
+          <span class="empty-icon" aria-hidden="true">▤</span>
+          <div><strong>No documents yet</strong><p>Create a document and it will appear here.</p></div>
+          <a href="editor.html?new=1">Start writing ↗</a>
+        </div>
+      </section>
+
+      <section class="templates-section" id="templates">
+        <div class="section-heading">
+          <div><p class="section-kicker">Made for your words</p><h2>Start with a template</h2></div>
+        </div>
+        <div class="saved-files-grid template-grid">
+          <article class="saved-file-card template-card" data-template="blank" data-title="Untitled document">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Blank document template">
+              <span class="recent-preview template-art" data-template-preview="blank" aria-hidden="true"></span>
+              <span class="recent-name">Blank document</span>
+              <span class="file-description">A clean page for your ideas</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="letter" data-title="Urdu letter">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Urdu letter template">
+              <span class="recent-preview template-art" data-template-preview="letter" aria-hidden="true"></span>
+              <span class="recent-name">Urdu letter</span>
+              <span class="file-description">مکمل درخواست کا نمونہ؛ اپنی معلومات کے مطابق تبدیل کریں۔</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="essay" data-title="Urdu essay">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Essay template">
+              <span class="recent-preview template-art" data-template-preview="essay" aria-hidden="true"></span>
+              <span class="recent-name">Essay</span>
+              <span class="file-description">علم کی اہمیت پر مکمل مضمون</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="poetry" data-title="My poetry">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Poetry template">
+              <span class="recent-preview template-art" data-template-preview="poetry" aria-hidden="true"></span>
+              <span class="recent-name">Poetry</span>
+              <span class="file-description">امید اور محنت پر مکمل نظم</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="invoice" data-title="Invoice">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Invoice template">
+              <span class="recent-preview template-art" data-template-preview="invoice" aria-hidden="true"></span>
+              <span class="recent-name">Invoice</span>
+              <span class="file-description">اشیا، قیمت اور ادائیگی کی تفصیل</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="job-application" data-title="Job application">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Job application template">
+              <span class="recent-preview template-art" data-template-preview="job-application" aria-hidden="true"></span>
+              <span class="recent-name">Job application</span>
+              <span class="file-description">ملازمت کے لیے باقاعدہ درخواست</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="dialogue" data-title="Dialogue">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Dialogue template">
+              <span class="recent-preview template-art" data-template-preview="dialogue" aria-hidden="true"></span>
+              <span class="recent-name">Dialogue</span>
+              <span class="file-description">دو دوستوں کے درمیان مطالعے پر مکالمہ</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="assignment" data-title="Assignment">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Assignment template">
+              <span class="recent-preview template-art" data-template-preview="assignment" aria-hidden="true"></span>
+              <span class="recent-name">Assignment</span>
+              <span class="file-description">سرورق اور منظم تعلیمی تحریر</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="study-notes" data-title="Study notes">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Study notes template">
+              <span class="recent-preview template-art" data-template-preview="study-notes" aria-hidden="true"></span>
+              <span class="recent-name">Study notes</span>
+              <span class="file-description">اہم نکات اور خلاصہ لکھنے کے لیے</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="report" data-title="Short report">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Report template">
+              <span class="recent-preview template-art" data-template-preview="report" aria-hidden="true"></span>
+              <span class="recent-name">Short report</span>
+              <span class="file-description">سرگرمی یا واقعے کی مختصر رپورٹ</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="invitation" data-title="Invitation">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Invitation template">
+              <span class="recent-preview template-art" data-template-preview="invitation" aria-hidden="true"></span>
+              <span class="recent-name">Invitation</span>
+              <span class="file-description">تقریب میں شرکت کی دعوت</span>
+            </button>
+          </article>
+          <article class="saved-file-card template-card" data-template="notice" data-title="Notice">
+            <button class="saved-file-link template-open" type="button" aria-label="Open Notice template">
+              <span class="recent-preview template-art" data-template-preview="notice" aria-hidden="true"></span>
+              <span class="recent-name">Notice</span>
+              <span class="file-description">اسکول یا ادارے کے لیے اطلاع نامہ</span>
+            </button>
+          </article>
+        </div>
+      </section>
+
+      <section class="guide-promo">
+        <div>
+          <p class="section-kicker">A practical starting point</p>
+          <h2>New to writing Urdu online?</h2>
+          <p>Learn how to type Urdu, use the editor tools, start from a complete template, and keep a backup of your work.</p>
+        </div>
+        <a class="create-button" href="urdu-writing-guide.html">Read the Urdu writing guide <span aria-hidden="true">↗</span></a>
+      </section>
+
+      <section class="home-faq" id="faq" aria-labelledby="home-faq-title">
+        <div class="section-heading">
+          <div><p class="section-kicker">Quick answers</p><h2 id="home-faq-title">Frequently asked questions</h2></div>
+          <a class="subtle-link" href="faq.html">View all FAQs ↗</a>
+        </div>
+        <div class="faq-list">
+          <details class="faq-item">
+            <summary>How do I type in Urdu?</summary>
+            <p>Type a word using Roman Urdu letters and press Space to convert it to Urdu. Phonetic typing is on by default in the editor. Read the <a href="urdu-writing-guide.html#typing">Urdu typing guide</a>.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Where are my documents saved?</summary>
+            <p>Documents are saved in this browser on this device. They are not uploaded to an account or synced to another device. Export backups of important work because clearing browser/site data may remove saved documents.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Can I open a TXT file?</summary>
+            <p>Yes. Choose <strong>Open a TXT file</strong> on this page, select your file, and review its text and line breaks in the editor.</p>
+          </details>
+          <details class="faq-item">
+            <summary>How do I print or save my document as a PDF?</summary>
+            <p>Choose <strong>Print / PDF</strong> in the editor. In your browser’s print dialog, select a printer or save as PDF, then check the preview before printing.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Is login or Google sign-in working?</summary>
+            <p>Not yet. The login, sign-up, and Google sign-in controls are interface-only and do not create accounts or save the details entered.</p>
+          </details>
+          <details class="faq-item">
+            <summary>How can I contact support?</summary>
+            <p>Visit the <a href="contact.html">Contact Us page</a> for available support options. Feedback is not delivered or saved until online storage is configured.</p>
+          </details>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="home-footer" id="about">
+    <div class="footer-main">
+      <div class="footer-about"><a class="footer-brand" href="index.html">Urdu Writer</a><p>A simple, private writing space for Urdu. Create, write, and print your documents right in your browser.</p></div>
+      <nav class="footer-links" aria-label="Explore"><strong>Explore</strong><a href="editor.html?new=1">New document</a><a href="#recent">My documents</a><a href="#templates">Templates</a><a href="urdu-writing-guide.html">Urdu writing guide</a><a href="faq.html">FAQ</a></nav>
+      <nav class="footer-links" aria-label="Support and policies"><strong>Support &amp; policies</strong><a href="about.html">About us</a><a href="contact.html">Contact us</a><a href="#faq">FAQ</a><a href="feedback.html">Feedback</a><a href="privacy.html">Privacy policy</a><a href="terms.html">Terms and conditions</a></nav>
+      <div class="footer-privacy"><strong>Private by design</strong><p>Your documents are saved in your browser and are not sent to a server.</p></div>
+    </div>
+    <div class="footer-bottom"><span>© <span id="footer-year"></span> Urdu Writer</span><nav class="footer-legal" aria-label="Site information"><a href="about.html">About</a><a href="contact.html">Contact</a><a href="#faq">FAQ</a><a href="feedback.html">Feedback</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></nav></div>
+  </footer>
+  <div id="auth-modal" class="auth-modal" hidden>
+    <section class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button id="auth-close" class="auth-close" type="button" aria-label="Close login dialog">×</button>
+      <p class="section-kicker">Your Urdu writing space</p>
+      <h2 id="auth-title">Welcome back</h2>
+      <div class="auth-switch" role="group" aria-label="Choose login or signup">
+        <button class="auth-tab active" type="button" data-auth-mode="login">Login</button>
+        <button class="auth-tab" type="button" data-auth-mode="signup">Sign up</button>
+      </div>
+      <form id="login-form" class="auth-form">
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="auth-submit" type="submit">Login</button>
+      </form>
+      <form id="signup-form" class="auth-form" hidden>
+        <label>Name<input name="name" type="text" autocomplete="name" required></label>
+        <label>Phone number<input name="phone" type="tel" autocomplete="tel" required></label>
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+        <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>Confirm password<input name="confirm-password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="auth-submit" type="submit">Create account</button>
+      </form>
+      <div class="auth-separator"><span>or continue with</span></div>
+      <button id="google-signin" class="google-signin" type="button"><img src="assets/Media/google-icon-logo-svgrepo-com.svg" alt="">Continue with Google</button>
+      <p class="auth-notice" role="status">Sign-in is not connected to a server yet. Your details are not sent or saved.</p>
+    </section>
+  </div>
+  <div id="home-toast" class="home-toast" role="status" aria-live="polite"></div>
+</body>
+</html>

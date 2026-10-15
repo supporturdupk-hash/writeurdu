@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Share feedback about Urdu Writer and report problems or suggest improvements.">
+  <meta name="theme-color" content="#ffffff">
+  <title>Feedback — Urdu Writer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/home.css">
+  <script src="assets/js/feedback-config.js" defer></script>
+  <script src="assets/js/feedback.js" defer></script>
+</head>
+<body>
+  <header class="home-header" dir="ltr">
+    <a class="home-brand" href="index.html">Urdu Writer</a>
+    <nav class="header-nav" aria-label="Main navigation">
+      <a href="index.html">Home</a>
+      <a href="urdu-writing-guide.html">Writing guide</a>
+      <a href="feedback.html" aria-current="page">Feedback</a>
+      <a href="about.html">About</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+    <a class="header-start" href="index.html">Home</a>
+  </header>
+
+  <main class="feedback-main">
+    <div class="feedback-intro">
+      <p class="section-kicker">Help us improve Urdu Writer</p>
+      <h1>Share your feedback</h1>
+      <p>Report a problem, tell us what is working, or suggest a feature. Your feedback helps us find and fix issues on the website.</p>
+    </div>
+    <form id="feedback-form" class="feedback-form">
+      <label for="feedback-category">What is your feedback about?
+        <select id="feedback-category" name="category" required>
+          <option value="" selected disabled>Select a topic</option>
+          <option value="bug">A problem or bug</option>
+          <option value="suggestion">A feature suggestion</option>
+          <option value="usability">Something is confusing or hard to use</option>
+          <option value="other">Other feedback</option>
+        </select>
+      </label>
+      <fieldset class="feedback-rating">
+        <legend>How was your experience? (optional)</legend>
+        <div class="rating-options">
+          <label class="rating-option"><input type="radio" name="rating" value="1"><span>1</span></label>
+          <label class="rating-option"><input type="radio" name="rating" value="2"><span>2</span></label>
+          <label class="rating-option"><input type="radio" name="rating" value="3"><span>3</span></label>
+          <label class="rating-option"><input type="radio" name="rating" value="4"><span>4</span></label>
+          <label class="rating-option"><input type="radio" name="rating" value="5"><span>5</span></label>
+        </div>
+      </fieldset>
+      <label for="feedback-message">Tell us what happened or what you would improve
+        <textarea id="feedback-message" name="message" minlength="10" maxlength="5000" placeholder="Please describe the issue, what you expected, and what happened instead." required></textarea>
+      </label>
+      <label for="feedback-email">Email address (optional, if you would like us to follow up)
+        <input id="feedback-email" name="email" type="email" maxlength="254" autocomplete="email" placeholder="you@example.com">
+      </label>
+      <button class="feedback-submit" type="submit">Send feedback</button>
+      <p id="feedback-status" class="feedback-status" role="status" aria-live="polite">Feedback cannot be sent or saved right now. Please use the Contact Us page for support.</p>
+    </form>
+  </main>
+
+  <footer class="home-footer">
+    <div class="footer-bottom"><span>© <span id="footer-year"></span> Urdu Writer</span><nav class="footer-legal" aria-label="Site information"><a href="index.html">Home</a><a href="about.html">About</a><a href="contact.html">Contact</a><a href="urdu-writing-guide.html">Writing guide</a><a href="faq.html">FAQ</a><a href="feedback.html" aria-current="page">Feedback</a><a href="privacy.html">Privacy policy</a><a href="terms.html">Terms and conditions</a></nav></div>
+  </footer>
+</body>
+</html>

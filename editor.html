@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Write and format Urdu documents online with right-to-left support and Nastaliq fonts.">
+  <meta name="theme-color" content="#ffffff">
+  <title>Urdu Writer — Online Urdu Editor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Amiri:wght@400;700&family=Cairo:wght@400;500;600;700&family=Changa:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=El+Messiri:wght@400;500;600;700&family=Gulzar&family=Harmattan:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Lateef:wght@400;500;600;700&family=Lemonada:wght@400;500;600;700&family=Markazi+Text:wght@400;500;600;700&family=Mada:wght@400;500;600;700&family=Mirza:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&family=Tajawal:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/editor.css">
+  <script src="assets/js/editor.js" defer></script>
+</head>
+<body class="home-ribbon-active">
+  <header class="app-header" dir="ltr">
+    <a class="editor-brand" href="index.html" aria-label="Urdu Writer home">Urdu Writer</a>
+    <div class="title-area">
+      <label class="sr-only" for="document-name">Document name</label>
+      <input id="document-name" class="document-name" value="Untitled document" maxlength="80" autocomplete="off">
+      <span class="save-status" id="save-status" role="status" title="Saved on this device">Saved</span>
+    </div>
+    <div class="header-actions">
+      <button class="header-button download-action" id="download-button" type="button" aria-label="Download document as Urdu Writer project">
+        <img src="assets/Media/download-svgrepo-com.svg" alt=""><span>Download</span>
+      </button>
+      <button class="header-button print-action" id="print-button" type="button">
+        <img src="assets/Media/printing-page-svgrepo-com.svg" alt=""><span>Print</span>
+      </button>
+    </div>
+  </header>
+  <input id="open-file-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
+
+  <nav class="tab-row" aria-label="Document tabs" dir="ltr">
+    <button class="app-launcher" type="button" aria-label="All tools">⠿</button>
+    <button class="tab-button active" type="button" data-tab="home">Home</button>
+    <button class="tab-button" type="button" data-tab="insert">Insert</button>
+    <button class="tab-button" type="button" data-tab="layout">Layout</button>
+    <button class="tab-button" type="button" data-tab="view">View</button>
+    <button class="tab-button" type="button" data-tab="help">Help</button>
+    <span class="tab-spacer"></span>
+    <div class="tab-actions">
+      <button id="typing-help-button" class="help-button" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
+      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu phonetic typing" aria-pressed="true" title="Toggle Urdu phonetic typing">
+        <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
+      </button>
+      <button id="focus-toggle" class="header-button focus-action" type="button" aria-pressed="false">⛶ <span>Focus</span></button>
+      <button id="header-toggle" class="bar-toggle header-toggle" type="button" aria-label="Hide top bar" aria-expanded="true" title="Hide top bar">
+        <img src="assets/Media/down-arrow-5-svgrepo-com.svg" alt="">
+      </button>
+    </div>
+  </nav>
+
+  <div class="ribbon-shell home-ribbon">
+  <section class="ribbon" aria-label="Editor tools" dir="ltr">
+    <div class="ribbon-panel home-panel active" data-panel="home">
+      <div class="ribbon-group command-group">
+        <button id="cut-button" class="icon-button clipboard-tool" type="button" title="Cut (Ctrl+X)" aria-label="Cut"><img src="assets/Media/cut-svgrepo-com.svg" alt=""></button>
+        <button id="paste-button" class="icon-button clipboard-tool" type="button" title="Paste (Ctrl+V)" aria-label="Paste"><img src="assets/Media/paste-svgrepo-com.svg" alt=""></button>
+        <button id="undo-button" class="icon-button" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+        <button id="redo-button" class="icon-button" type="button" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+        <button id="copy-button" class="icon-button clipboard-tool" type="button" title="Copy (Ctrl+C)" aria-label="Copy"><img src="assets/Media/copy-svgrepo-com.svg" alt=""></button>
+      </div>
+      <div class="ribbon-group format-group">
+        <div class="control-row">
+          <label class="sr-only" for="font-family">Font family</label>
+          <span class="font-family-control">
+            <select id="font-family" class="ribbon-select font-select" aria-label="Urdu font">
+              <option value="'Noto Nastaliq Urdu', serif">Noto Nastaliq Urdu</option><option value="'Gulzar', serif">Gulzar</option><option value="'Noto Naskh Arabic', serif">Noto Naskh Arabic</option><option value="'Lateef', serif">Lateef</option><option value="'Amiri', serif">Amiri</option><option value="'Markazi Text', serif">Markazi Text</option><option value="'Scheherazade New', serif">Scheherazade New</option><option value="'Harmattan', sans-serif">Harmattan</option><option value="'Noto Sans Arabic', sans-serif">Noto Sans Arabic</option><option value="'Noto Kufi Arabic', sans-serif">Noto Kufi Arabic</option><option value="'Reem Kufi', sans-serif">Reem Kufi</option><option value="'Mada', sans-serif">Mada</option><option value="'Tajawal', sans-serif">Tajawal</option><option value="'Cairo', sans-serif">Cairo</option><option value="'IBM Plex Sans Arabic', sans-serif">IBM Plex Sans Arabic</option><option value="'Changa', sans-serif">Changa</option><option value="'Lemonada', cursive">Lemonada</option><option value="'El Messiri', sans-serif">El Messiri</option><option value="'Mirza', serif">Mirza</option><option value="'Aref Ruqaa', serif">Aref Ruqaa</option>
+            </select>
+            <span id="font-family-preview" class="font-family-preview" aria-hidden="true"></span>
+          </span>
+          <label class="sr-only" for="font-size">Font size</label>
+          <span class="font-size-control">
+            <input id="font-size" class="ribbon-select size-input" type="text" inputmode="numeric" value="18" aria-label="Font size in pixels" autocomplete="off">
+            <button id="font-size-toggle" class="font-size-toggle" type="button" aria-label="Show font sizes" aria-expanded="false">▾</button>
+            <div id="font-size-menu" class="font-size-menu" role="listbox" aria-label="Choose font size" hidden>
+              <button type="button" role="option" data-font-size="8">8</button><button type="button" role="option" data-font-size="9">9</button><button type="button" role="option" data-font-size="10">10</button><button type="button" role="option" data-font-size="11">11</button><button type="button" role="option" data-font-size="12">12</button><button type="button" role="option" data-font-size="14">14</button><button type="button" role="option" data-font-size="16">16</button><button type="button" role="option" data-font-size="18">18</button><button type="button" role="option" data-font-size="20">20</button><button type="button" role="option" data-font-size="22">22</button><button type="button" role="option" data-font-size="24">24</button><button type="button" role="option" data-font-size="26">26</button><button type="button" role="option" data-font-size="28">28</button><button type="button" role="option" data-font-size="36">36</button><button type="button" role="option" data-font-size="48">48</button><button type="button" role="option" data-font-size="72">72</button>
+            </div>
+          </span>
+          <button class="icon-button" type="button" title="Increase font size" aria-label="Increase font size" data-size-step="1">A⁺</button><button class="icon-button" type="button" title="Decrease font size" aria-label="Decrease font size" data-size-step="-1">A⁻</button>
+          <span class="ribbon-divider"></span>
+          <button class="icon-button text-tool" type="button" data-command="bold" title="Bold" aria-label="Bold"><strong>B</strong></button><button class="icon-button text-tool italic-tool" type="button" data-command="italic" title="Italic" aria-label="Italic"><em>I</em></button><button class="icon-button text-tool" type="button" data-command="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+          <span class="ribbon-divider"></span>
+          <div class="color-picker" data-color-picker="text">
+            <button class="color-tool text-color-tool" type="button" aria-label="Text color" title="Text color">A<span></span></button>
+            <div class="color-palette" role="group" aria-label="Text color palette"><label class="more-colors">More colors<input id="text-color" type="color" value="#26334a" aria-label="More text colors"></label></div>
+          </div>
+          <div class="color-picker" data-color-picker="highlight">
+            <button class="color-tool highlight-tool" type="button" aria-label="Text highlight color" title="Text highlight color">▰<span></span></button>
+            <div class="color-palette" role="group" aria-label="Highlight color palette"><label class="more-colors">More colors<input id="highlight-color" type="color" value="#fff1a8" aria-label="More highlight colors"></label></div>
+          </div>
+        </div>
+      </div>
+      <div class="ribbon-group paragraph-group">
+        <div class="paragraph-toolbar">
+          <div class="list-tools">
+            <span class="split-tool">
+              <button class="icon-button list-main" type="button" data-command="insertUnorderedList" title="Bullets" aria-label="Bullets"><svg class="list-tool-icon bullet-tool-icon" viewBox="0 0 18 18" aria-hidden="true"><circle cx="2.5" cy="4" r="1.2"/><circle cx="2.5" cy="9" r="1.2"/><circle cx="2.5" cy="14" r="1.2"/><path d="M6 4h10M6 9h10M6 14h10"/></svg></button><button class="icon-button split-arrow" type="button" data-list-menu="bullets" aria-label="Bullet library" aria-expanded="false">▾</button>
+            </span>
+            <span class="split-tool">
+              <button class="icon-button list-main" type="button" data-command="insertOrderedList" title="Numbering" aria-label="Numbering"><svg class="list-tool-icon number-tool-icon" viewBox="0 0 18 18" aria-hidden="true"><text x="1" y="5.5">1</text><text x="1" y="10.5">2</text><text x="1" y="15.5">3</text><path d="M7 4h10M7 9h10M7 14h10"/></svg></button><button class="icon-button split-arrow" type="button" data-list-menu="numbering" aria-label="Numbering library" aria-expanded="false">▾</button>
+            </span>
+          </div>
+          <span class="ribbon-divider"></span>
+          <div class="alignment-tools" role="group" aria-label="Paragraph alignment">
+            <button class="icon-button alignment-button" type="button" data-paragraph-align="left" aria-label="Align left" title="Align left"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.3h8M2 9.7h12M2 13h8"/></svg></button>
+            <button class="icon-button alignment-button active" type="button" data-paragraph-align="right" aria-label="Align right" title="Align right"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M6 6.3h8M2 9.7h12M6 13h8"/></svg></button>
+            <button class="icon-button alignment-button" type="button" data-paragraph-align="center" aria-label="Center" title="Center"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M4 6.3h8M2 9.7h12M4 13h8"/></svg></button>
+            <button class="icon-button alignment-button" type="button" data-paragraph-align="justify" aria-label="Justify" title="Justify"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.3h12M2 9.7h12M2 13h12"/></svg></button>
+          </div>
+          <span class="ribbon-divider"></span>
+          <span class="split-tool spacing-tool">
+            <button class="icon-button paragraph-tool-main" type="button" data-spacing-step="1" title="Cycle line spacing" aria-label="Cycle line spacing"><img class="paragraph-tool-icon" src="assets/Media/paragraph-spacing-svgrepo-com.svg" alt=""></button><button class="icon-button split-arrow" type="button" data-list-menu="spacing" aria-label="Line spacing options" aria-expanded="false">▾</button>
+          </span>
+          <label class="line-spacing" hidden><select id="line-spacing" aria-label="Line spacing"><option value="1.5">1.5</option><option value="1.8" selected>1.8</option><option value="2">2.0</option></select></label>
+        </div>
+        <div class="paragraph-menu" id="bullet-menu" role="dialog" aria-label="Bullet Library" hidden>
+          <strong>Bullet Library</strong>
+          <div class="bullet-options">
+            <button type="button" data-list-kind="bullet" data-list-value="•">•</button><button type="button" data-list-kind="bullet" data-list-value="○">○</button><button type="button" data-list-kind="bullet" data-list-value="▪">▪</button><button type="button" data-list-kind="bullet" data-list-value="▫">▫</button><button type="button" data-list-kind="bullet" data-list-value="★">★</button><button type="button" data-list-kind="bullet" data-list-value="➜">➜</button>
+            <button type="button" data-list-kind="bullet" data-list-value="+">＋</button><button type="button" data-list-kind="bullet" data-list-value="−">−</button><button type="button" data-list-kind="bullet" data-list-value="♦">♦</button><button type="button" data-list-kind="bullet" data-list-value="♢">♢</button><button type="button" data-list-kind="bullet" data-list-value="❖">❖</button><button type="button" data-list-kind="bullet" data-list-value="➤">➤</button>
+            <button type="button" data-list-kind="bullet" data-list-value="☻">☻</button><button type="button" data-list-kind="bullet" data-list-value="☹">☹</button><button type="button" data-list-kind="bullet" data-list-value="✓">✓</button><button type="button" data-list-kind="bullet" data-list-value="✗">✗</button><button type="button" data-list-kind="bullet" data-list-value="□">□</button>
+          </div>
+        </div>
+        <div class="paragraph-menu numbering-menu" id="numbering-menu" role="dialog" aria-label="Numbering Library" hidden>
+          <strong>Numbering Library</strong>
+          <div class="numbering-options">
+            <button type="button" data-list-kind="number" data-list-value="upper-roman"><span>I.<br>II.<br>III.</span><i></i></button><button type="button" data-list-kind="number" data-list-value="upper-alpha"><span>A.<br>B.<br>C.</span><i></i></button><button type="button" data-list-kind="number" data-list-value="decimal"><span>1.<br>2.<br>3.</span><i></i></button><button type="button" data-list-kind="number" data-list-value="lower-alpha"><span>a.<br>b.<br>c.</span><i></i></button><button type="button" data-list-kind="number" data-list-value="lower-roman"><span>i.<br>ii.<br>iii.</span><i></i></button>
+            <button type="button" data-list-kind="number" data-list-value="upper-roman-paren"><span>I)<br>II)<br>III)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="upper-alpha-paren"><span>A)<br>B)<br>C)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="decimal-paren"><span>1)<br>2)<br>3)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="lower-alpha-paren"><span>a)<br>b)<br>c)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="lower-roman-paren"><span>i)<br>ii)<br>iii)</span><i></i></button>
+            <button type="button" data-list-kind="number" data-list-value="upper-roman-bracket"><span>(I)<br>(II)<br>(III)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="upper-alpha-bracket"><span>(A)<br>(B)<br>(C)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="decimal-bracket"><span>(1)<br>(2)<br>(3)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="lower-alpha-bracket"><span>(a)<br>(b)<br>(c)</span><i></i></button><button type="button" data-list-kind="number" data-list-value="lower-roman-bracket"><span>(i)<br>(ii)<br>(iii)</span><i></i></button>
+          </div>
+        </div>
+        <div class="paragraph-menu spacing-menu" id="spacing-menu" role="listbox" aria-label="Line spacing options" hidden>
+          <strong>Line Spacing</strong>
+          <button type="button" data-line-spacing="1">1.0</button><button type="button" data-line-spacing="1.15">1.15</button><button type="button" data-line-spacing="1.5">1.5</button><button type="button" data-line-spacing="2">2.0</button><button type="button" data-line-spacing="2.5">2.5</button><button type="button" data-line-spacing="3">3.0</button>
+          <div class="menu-separator"></div>
+          <button type="button" data-paragraph-space="before">↕ <span>Add Space Before Paragraph</span></button>
+          <button type="button" data-paragraph-space="after">↕ <span>Remove Space After Paragraph</span></button>
+        </div>
+      </div>
+      <div class="ribbon-group editing-group"><button class="ribbon-action" id="find-button" type="button">⌕ <span>Find</span></button><button class="ribbon-action" id="replace-button" type="button">⇄ <span>Replace</span></button><span class="group-caption">Editing</span></div>
+    </div>
+
+    <div class="ribbon-panel" data-panel="insert">
+      <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
+        <button class="insert-action" id="table-button" type="button" aria-expanded="false" aria-controls="table-menu"><img src="assets/Media/table-alt-svgrepo-com.svg" alt=""><span>Table</span></button>
+        <div id="table-menu" class="insert-menu table-menu" role="dialog" aria-label="Insert Table" hidden>
+          <strong>Insert Table</strong>
+          <div class="table-picker-grid" role="grid" aria-label="Choose rows and columns"></div>
+          <output id="table-size-label">Choose row and column</output>
+        </div>
+      </div>
+      <div class="ribbon-group insert-group insert-ribbon-group">
+        <button class="insert-action" id="image-button" type="button"><img src="assets/Media/picture-svgrepo-com.svg" alt=""><span>Picture</span></button>
+        <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      </div>
+      <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
+        <button class="insert-action" id="page-number-button" type="button" aria-expanded="false" aria-controls="page-number-menu"><img src="assets/Media/page-number-svgrepo-com.svg" alt=""><span>Page Number</span></button>
+        <div id="page-number-menu" class="insert-menu page-number-menu" role="dialog" aria-label="Insert Page Number" hidden>
+          <strong>Add to Header or Footer</strong>
+          <div class="page-number-presets">
+            <button type="button" data-page-number-location="header-left">1<span>Header left</span></button>
+            <button type="button" data-page-number-location="header-center">1<span>Header center</span></button>
+            <button type="button" data-page-number-location="header-right">1<span>Header right</span></button>
+            <button type="button" data-page-number-location="footer-left">1<span>Footer left</span></button>
+            <button type="button" data-page-number-location="footer-center">1<span>Footer center</span></button>
+            <button type="button" data-page-number-location="footer-right">1<span>Footer right</span></button>
+          </div>
+          <label class="include-page-count"><input id="include-page-count" type="checkbox"> Include page count</label>
+          <button class="insert-menu-link" id="remove-page-numbers" type="button">Remove Page Numbers</button>
+        </div>
+        <button class="insert-action" id="header-insert-button" type="button"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Header</span></button>
+        <button class="insert-action footer-insert-action" id="footer-insert-button" type="button"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Footer</span></button>
+      </div>
+      <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
+        <button class="insert-action" id="emoji-button" type="button" aria-expanded="false" aria-controls="emoji-menu"><img src="assets/Media/emoji-funny-circle-svgrepo-com.svg" alt=""><span>Emoji</span></button>
+        <div id="emoji-menu" class="insert-menu emoji-menu" role="dialog" aria-label="Emoji" hidden>
+          <div class="emoji-grid" role="group" aria-label="Common emojis">
+            <button type="button" data-emoji="😀">😀</button><button type="button" data-emoji="😁">😁</button><button type="button" data-emoji="😂">😂</button><button type="button" data-emoji="🤣">🤣</button><button type="button" data-emoji="😃">😃</button>
+            <button type="button" data-emoji="😄">😄</button><button type="button" data-emoji="😅">😅</button><button type="button" data-emoji="😆">😆</button><button type="button" data-emoji="😉">😉</button><button type="button" data-emoji="😊">😊</button>
+            <button type="button" data-emoji="🙂">🙂</button><button type="button" data-emoji="😍">😍</button><button type="button" data-emoji="😘">😘</button><button type="button" data-emoji="😎">😎</button><button type="button" data-emoji="🤔">🤔</button>
+            <button type="button" data-emoji="😢">😢</button><button type="button" data-emoji="😭">😭</button><button type="button" data-emoji="😡">😡</button><button type="button" data-emoji="👍">👍</button><button type="button" data-emoji="👏">👏</button>
+            <button type="button" data-emoji="🙏">🙏</button><button type="button" data-emoji="❤️">❤️</button><button type="button" data-emoji="🎉">🎉</button><button type="button" data-emoji="⭐">⭐</button><button type="button" data-emoji="✅">✅</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ribbon-panel" data-panel="layout">
+      <div class="ribbon-group layout-group layout-page-setup">
+        <button class="layout-action layout-menu-trigger" id="margins-button" type="button" aria-expanded="false" aria-controls="margins-menu"><img class="layout-glyph" src="assets/Media/margin-page-border-svgrepo-com.svg" alt=""><span>Margins</span></button>
+        <div class="layout-menu" id="margins-menu" role="menu" aria-label="Page margins" hidden>
+          <strong>Page margins</strong>
+          <button type="button" data-margin-preset="normal"><span>Normal</span><small>1″ on each side</small></button>
+          <button type="button" data-margin-preset="narrow"><span>Narrow</span><small>0.5″ on each side</small></button>
+          <button type="button" data-margin-preset="moderate"><span>Moderate</span><small>1″ top/bottom · 0.75″ sides</small></button>
+          <button type="button" data-margin-preset="wide"><span>Wide</span><small>1″ top/bottom · 2″ sides</small></button>
+          <button type="button" data-margin-preset="office"><span>Office default</span><small>1″ top/bottom · 1.25″ sides</small></button>
+          <div class="layout-custom-fields">
+            <label>Top <input id="margin-top-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
+            <label>Bottom <input id="margin-bottom-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
+            <label>Left <input id="margin-left-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
+            <label>Right <input id="margin-right-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
+          </div>
+          <button type="button" class="layout-menu-primary" id="apply-custom-margins">Apply custom margins</button>
+        </div>
+        <button class="layout-action layout-menu-trigger" id="orientation-button" type="button" aria-expanded="false" aria-controls="orientation-menu"><span class="layout-glyph orientation-glyph">▱</span><span>Orientation</span></button>
+        <div class="layout-menu" id="orientation-menu" role="menu" aria-label="Page orientation" hidden>
+          <strong>Page orientation</strong>
+          <button type="button" data-page-orientation="portrait">Portrait <small>Vertical page</small></button>
+          <button type="button" data-page-orientation="landscape">Landscape <small>Horizontal page</small></button>
+        </div>
+        <button class="layout-action layout-menu-trigger" id="size-button" type="button" aria-expanded="false" aria-controls="size-menu"><img class="layout-glyph" src="assets/Media/size-svgrepo-com.svg" alt=""><span>Size</span></button>
+        <div class="layout-menu" id="size-menu" role="menu" aria-label="Page size" hidden>
+          <strong>Page size</strong>
+          <button type="button" data-page-size="Letter">Letter <small>8.5″ × 11″</small></button>
+          <button type="button" data-page-size="Legal">Legal <small>8.5″ × 14″</small></button>
+          <button type="button" data-page-size="Executive">Executive <small>7.25″ × 10.5″</small></button>
+          <button type="button" data-page-size="A4">A4 <small>8.27″ × 11.69″</small></button>
+          <button type="button" data-page-size="A5">A5 <small>5.83″ × 8.27″</small></button>
+          <div class="layout-custom-fields layout-custom-size">
+            <label>Width <input id="page-width-input" type="number" min="4" max="20" step="0.1" value="8.27"> in</label>
+            <label>Height <input id="page-height-input" type="number" min="4" max="20" step="0.1" value="11.69"> in</label>
+          </div>
+          <button type="button" class="layout-menu-primary" id="apply-custom-size">Apply custom size</button>
+        </div>
+        <button class="layout-action layout-menu-trigger" id="columns-button" type="button" aria-expanded="false" aria-controls="columns-menu"><img class="layout-glyph" src="assets/Media/columns-three-svgrepo-com.svg" alt=""><span>Columns</span></button>
+        <div class="layout-menu" id="columns-menu" role="menu" aria-label="Document columns" hidden>
+          <strong>Document columns</strong>
+          <button type="button" data-column-count="1">One column</button>
+          <button type="button" data-column-count="2">Two columns</button>
+          <button type="button" data-column-count="3">Three columns</button>
+        </div>
+        <button class="layout-action layout-menu-trigger" id="line-numbers-button" type="button" aria-expanded="false" aria-controls="line-numbers-menu"><img class="layout-glyph" src="assets/Media/line%20number.svg" alt=""><span>Line Numbers</span></button>
+        <div class="layout-menu" id="line-numbers-menu" role="menu" aria-label="Line numbering" hidden>
+          <strong>Line numbering</strong>
+          <button type="button" data-line-numbering="none">None</button>
+          <button type="button" data-line-numbering="continuous">Continuous</button>
+          <button type="button" data-line-numbering="restart">Restart after each page break</button>
+        </div>
+        <span class="group-caption">Page setup</span>
+      </div>
+      <div class="ribbon-group layout-group layout-background-group">
+        <button class="layout-action layout-menu-trigger" id="page-border-button" type="button" aria-expanded="false" aria-controls="page-border-menu"><img class="layout-glyph" src="assets/Media/page%20border.svg" alt=""><span>Page Borders</span></button>
+        <div class="layout-menu" id="page-border-menu" role="menu" aria-label="Page borders" hidden>
+          <strong>Page border</strong>
+          <button type="button" data-page-border="none">No border</button>
+          <button type="button" data-page-border="solid">Box border</button>
+          <button type="button" data-page-border="double">Double border</button>
+        </div>
+        <label class="layout-action layout-color-action" for="page-color-input"><img class="layout-glyph" src="assets/Media/color-background-svgrepo-com.svg" alt=""><span>Page Color</span><input id="page-color-input" type="color" value="#ffffff" aria-label="Page color"></label>
+        <span class="group-caption">Page background</span>
+      </div>
+    </div>
+
+    <div class="ribbon-panel" data-panel="view">
+      <div class="ribbon-group view-ribbon-group">
+        <button id="view-focus-toggle" class="view-action" type="button" aria-pressed="false"><span class="view-glyph">⛶</span><span>Focus</span></button>
+        <span class="group-caption">Focus</span>
+      </div>
+      <div class="ribbon-group view-ribbon-group">
+        <button id="view-ruler-toggle" class="view-action" type="button" aria-pressed="true"><span class="view-glyph">▤</span><span>Ruler</span></button>
+        <span class="group-caption">Ruler</span>
+      </div>
+      <div class="ribbon-group view-ribbon-group">
+        <button id="theme-toggle" class="view-action" type="button" aria-pressed="false"><span class="view-glyph">◐</span><span>Dark mode</span></button>
+        <span class="group-caption">Theme</span>
+      </div>
+      <div class="ribbon-group view-ribbon-group view-zoom-group">
+        <button id="zoom-out" class="icon-button" type="button" aria-label="Zoom out">−</button>
+        <input id="zoom-range" type="range" min="70" max="130" value="100" aria-label="Zoom">
+        <button id="zoom-in" class="icon-button" type="button" aria-label="Zoom in">+</button>
+        <span id="zoom-label" class="zoom-label">100%</span>
+        <span class="group-caption">Zoom</span>
+      </div>
+    </div>
+
+    <div class="ribbon-panel" data-panel="help">
+      <div class="ribbon-group help-ribbon-group">
+        <a class="help-ribbon-action" href="faq.html"><span class="help-ribbon-glyph">?</span><span>Help &amp; FAQ</span></a>
+        <a class="help-ribbon-action" href="urdu-writing-guide.html"><span class="help-ribbon-glyph">✎</span><span>Writing guide</span></a>
+        <span class="group-caption">Learn</span>
+      </div>
+      <div class="ribbon-group help-ribbon-group">
+        <a class="help-ribbon-action" href="contact.html"><span class="help-ribbon-glyph">✉</span><span>Contact support</span></a>
+        <a class="help-ribbon-action" href="feedback.html"><span class="help-ribbon-glyph">☏</span><span>Feedback</span></a>
+        <span class="group-caption">Get in touch</span>
+      </div>
+      <div class="ribbon-group help-ribbon-group">
+        <button id="help-shortcuts-button" class="help-ribbon-action" type="button"><span class="help-ribbon-glyph">⌨</span><span>Keyboard shortcuts</span></button>
+        <span class="group-caption">Reference</span>
+      </div>
+    </div>
+  </section>
+    <button id="tools-toggle" class="bar-toggle tools-toggle" type="button" aria-label="Hide tools bar" aria-expanded="true" title="Hide tools bar">
+      <img src="assets/Media/down-arrow-5-svgrepo-com.svg" alt="">
+    </button>
+  </div>
+
+  <main class="document-workspace">
+    <aside class="keyboard-sidebar" aria-label="On-screen Urdu keyboard">
+      <button id="onscreen-keyboard-toggle" class="keyboard-toggle" type="button" aria-expanded="false" aria-controls="onscreen-keyboard">⌨ <span>Urdu keyboard</span></button>
+      <section id="onscreen-keyboard" class="onscreen-keyboard" aria-label="On-screen keyboard" hidden>
+        <div class="keyboard-layout-tabs" role="tablist" aria-label="Keyboard layout">
+          <button type="button" role="tab" aria-selected="true" data-keyboard-layout="urdu">اردو</button>
+          <button type="button" role="tab" aria-selected="false" data-keyboard-layout="english">English</button>
+          <button type="button" role="tab" aria-selected="false" data-keyboard-layout="symbols">Symbols</button>
+        </div>
+        <div class="keyboard-layout" data-keyboard-panel="urdu">
+          <div class="keyboard-heading">Urdu keyboard</div>
+          <div class="keyboard-letters" dir="rtl">
+            <button type="button" data-onscreen-key="ا">ا</button><button type="button" data-onscreen-key="ب">ب</button><button type="button" data-onscreen-key="پ">پ</button><button type="button" data-onscreen-key="ت">ت</button><button type="button" data-onscreen-key="ٹ">ٹ</button><button type="button" data-onscreen-key="ث">ث</button><button type="button" data-onscreen-key="ج">ج</button><button type="button" data-onscreen-key="چ">چ</button>
+            <button type="button" data-onscreen-key="ح">ح</button><button type="button" data-onscreen-key="خ">خ</button><button type="button" data-onscreen-key="د">د</button><button type="button" data-onscreen-key="ڈ">ڈ</button><button type="button" data-onscreen-key="ذ">ذ</button><button type="button" data-onscreen-key="ر">ر</button><button type="button" data-onscreen-key="ڑ">ڑ</button><button type="button" data-onscreen-key="ز">ز</button>
+            <button type="button" data-onscreen-key="ژ">ژ</button><button type="button" data-onscreen-key="س">س</button><button type="button" data-onscreen-key="ش">ش</button><button type="button" data-onscreen-key="ص">ص</button><button type="button" data-onscreen-key="ض">ض</button><button type="button" data-onscreen-key="ط">ط</button><button type="button" data-onscreen-key="ظ">ظ</button><button type="button" data-onscreen-key="ع">ع</button>
+            <button type="button" data-onscreen-key="غ">غ</button><button type="button" data-onscreen-key="ف">ف</button><button type="button" data-onscreen-key="ق">ق</button><button type="button" data-onscreen-key="ک">ک</button><button type="button" data-onscreen-key="گ">گ</button><button type="button" data-onscreen-key="ل">ل</button><button type="button" data-onscreen-key="م">م</button><button type="button" data-onscreen-key="ن">ن</button>
+            <button type="button" data-onscreen-key="ں">ں</button><button type="button" data-onscreen-key="و">و</button><button type="button" data-onscreen-key="ہ">ہ</button><button type="button" data-onscreen-key="ھ">ھ</button><button type="button" data-onscreen-key="ء">ء</button><button type="button" data-onscreen-key="ئ">ئ</button><button type="button" data-onscreen-key="ی">ی</button><button type="button" data-onscreen-key="ے">ے</button><button type="button" data-onscreen-key="ؤ">ؤ</button>
+          </div>
+        </div>
+        <div class="keyboard-layout" data-keyboard-panel="english" hidden>
+          <div class="keyboard-heading">English keyboard</div>
+          <div class="english-keyboard" dir="ltr">
+            <div class="english-key-row">
+              <button type="button" data-onscreen-key="1" data-shifted-key="!">1</button><button type="button" data-onscreen-key="2" data-shifted-key="@">2</button><button type="button" data-onscreen-key="3" data-shifted-key="#">3</button><button type="button" data-onscreen-key="4" data-shifted-key="$">4</button><button type="button" data-onscreen-key="5" data-shifted-key="%">5</button><button type="button" data-onscreen-key="6" data-shifted-key="^">6</button><button type="button" data-onscreen-key="7" data-shifted-key="&amp;">7</button><button type="button" data-onscreen-key="8" data-shifted-key="*">8</button><button type="button" data-onscreen-key="9" data-shifted-key="(">9</button><button type="button" data-onscreen-key="0" data-shifted-key=")">0</button>
+            </div>
+            <div class="english-key-row">
+              <button type="button" data-onscreen-key="q" data-shifted-key="Q">q</button><button type="button" data-onscreen-key="w" data-shifted-key="W">w</button><button type="button" data-onscreen-key="e" data-shifted-key="E">e</button><button type="button" data-onscreen-key="r" data-shifted-key="R">r</button><button type="button" data-onscreen-key="t" data-shifted-key="T">t</button><button type="button" data-onscreen-key="y" data-shifted-key="Y">y</button><button type="button" data-onscreen-key="u" data-shifted-key="U">u</button><button type="button" data-onscreen-key="i" data-shifted-key="I">i</button><button type="button" data-onscreen-key="o" data-shifted-key="O">o</button><button type="button" data-onscreen-key="p" data-shifted-key="P">p</button>
+            </div>
+            <div class="english-key-row">
+              <button type="button" data-onscreen-key="a" data-shifted-key="A">a</button><button type="button" data-onscreen-key="s" data-shifted-key="S">s</button><button type="button" data-onscreen-key="d" data-shifted-key="D">d</button><button type="button" data-onscreen-key="f" data-shifted-key="F">f</button><button type="button" data-onscreen-key="g" data-shifted-key="G">g</button><button type="button" data-onscreen-key="h" data-shifted-key="H">h</button><button type="button" data-onscreen-key="j" data-shifted-key="J">j</button><button type="button" data-onscreen-key="k" data-shifted-key="K">k</button><button type="button" data-onscreen-key="l" data-shifted-key="L">l</button>
+            </div>
+            <div class="english-key-row">
+              <button type="button" class="keyboard-shift" data-onscreen-action="shift" aria-label="Toggle uppercase" aria-pressed="false">⇧</button>
+              <button type="button" data-onscreen-key="z" data-shifted-key="Z">z</button><button type="button" data-onscreen-key="x" data-shifted-key="X">x</button><button type="button" data-onscreen-key="c" data-shifted-key="C">c</button><button type="button" data-onscreen-key="v" data-shifted-key="V">v</button><button type="button" data-onscreen-key="b" data-shifted-key="B">b</button><button type="button" data-onscreen-key="n" data-shifted-key="N">n</button><button type="button" data-onscreen-key="m" data-shifted-key="M">m</button><button type="button" data-onscreen-key="," data-shifted-key="&lt;">,</button><button type="button" data-onscreen-key="." data-shifted-key="&gt;">.</button>
+            </div>
+            <div class="english-key-row">
+              <button type="button" data-onscreen-key="-">-</button><button type="button" data-onscreen-key="=">=</button><button type="button" data-onscreen-key="[">[</button><button type="button" data-onscreen-key="]">]</button><button type="button" data-onscreen-key=";">;</button><button type="button" data-onscreen-key="&#39;">&#39;</button><button type="button" data-onscreen-key="/">/</button><button type="button" data-onscreen-key="\">&#92;</button><button type="button" data-onscreen-key="?">?</button>
+            </div>
+          </div>
+        </div>
+        <div class="keyboard-layout" data-keyboard-panel="symbols" hidden>
+          <div class="keyboard-heading">Punctuation &amp; symbols</div>
+          <div class="symbol-keyboard" dir="ltr">
+            <button type="button" data-onscreen-key=".">.</button><button type="button" data-onscreen-key=",">,</button><button type="button" data-onscreen-key="?">?</button><button type="button" data-onscreen-key="!">!</button><button type="button" data-onscreen-key=":">:</button><button type="button" data-onscreen-key=";">;</button><button type="button" data-onscreen-key="…">…</button><button type="button" data-onscreen-key="—">—</button>
+            <button type="button" data-onscreen-key="،">،</button><button type="button" data-onscreen-key="؛">؛</button><button type="button" data-onscreen-key="؟">؟</button><button type="button" data-onscreen-key="۔">۔</button><button type="button" data-onscreen-key="٪">٪</button><button type="button" data-onscreen-key="٫">٫</button><button type="button" data-onscreen-key="٭">٭</button><button type="button" data-onscreen-key="؍">؍</button>
+            <button type="button" data-onscreen-key="(">(</button><button type="button" data-onscreen-key=")">)</button><button type="button" data-onscreen-key="[">[</button><button type="button" data-onscreen-key="]">]</button><button type="button" data-onscreen-key="{">{</button><button type="button" data-onscreen-key="}">}</button><button type="button" data-onscreen-key="&quot;">"</button><button type="button" data-onscreen-key="&#39;">&#39;</button>
+            <button type="button" data-onscreen-key="@">@</button><button type="button" data-onscreen-key="#">#</button><button type="button" data-onscreen-key="$">$</button><button type="button" data-onscreen-key="€">€</button><button type="button" data-onscreen-key="£">£</button><button type="button" data-onscreen-key="¥">¥</button><button type="button" data-onscreen-key="₨">₨</button><button type="button" data-onscreen-key="&amp;">&amp;</button>
+            <button type="button" data-onscreen-key="+">+</button><button type="button" data-onscreen-key="−">−</button><button type="button" data-onscreen-key="×">×</button><button type="button" data-onscreen-key="÷">÷</button><button type="button" data-onscreen-key="=">=</button><button type="button" data-onscreen-key="≠">≠</button><button type="button" data-onscreen-key="≤">≤</button><button type="button" data-onscreen-key="≥">≥</button>
+            <button type="button" data-onscreen-key="©">©</button><button type="button" data-onscreen-key="®">®</button><button type="button" data-onscreen-key="™">™</button><button type="button" data-onscreen-key="§">§</button><button type="button" data-onscreen-key="°">°</button><button type="button" data-onscreen-key="•">•</button><button type="button" data-onscreen-key="→">→</button><button type="button" data-onscreen-key="←">←</button>
+          </div>
+        </div>
+        <div class="keyboard-controls" dir="ltr">
+          <button type="button" data-onscreen-key="Backspace" aria-label="Backspace">⌫</button>
+          <button type="button" data-onscreen-key=" ">Space</button>
+          <button type="button" data-onscreen-key="Enter" aria-label="New line">↵</button>
+        </div>
+      </section>
+    </aside>
+    <div class="document-center">
+      <div class="ruler" aria-label="Horizontal page ruler" dir="ltr">
+        <div class="ruler-track" id="horizontal-ruler">
+          <div class="ruler-scale" aria-hidden="true"></div>
+          <button class="ruler-marker margin-marker" type="button" data-ruler-handle="margin-left" aria-label="Adjust left page margin" title="Left page margin"></button>
+          <button class="ruler-marker margin-marker" type="button" data-ruler-handle="margin-right" aria-label="Adjust right page margin" title="Right page margin"></button>
+          <button class="ruler-marker indent-marker end-indent-marker" type="button" data-ruler-handle="paragraph-end" aria-label="Adjust paragraph end indent" title="Paragraph end indent"></button>
+          <button class="ruler-marker indent-marker start-indent-marker" type="button" data-ruler-handle="paragraph-start" aria-label="Adjust paragraph start indent" title="Paragraph start indent"></button>
+          <button class="ruler-marker indent-marker first-line-marker" type="button" data-ruler-handle="first-line" aria-label="Adjust first-line indent" title="First-line indent"></button>
+        </div>
+      </div>
+      <div class="document-stage">
+        <div class="page-frame">
+          <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type Roman Urdu then press space to convert to Urdu." aria-multiline="true" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
+          <div class="vertical-ruler" aria-label="Vertical page ruler">
+            <div class="vertical-ruler-track" id="vertical-ruler">
+              <div class="vertical-ruler-scale" aria-hidden="true"></div>
+              <button class="ruler-marker vertical-margin-marker" type="button" data-ruler-handle="margin-top" aria-label="Adjust top page margin" title="Top margin / header position"></button>
+              <button class="ruler-marker vertical-margin-marker bottom-margin-marker" type="button" data-ruler-handle="margin-bottom" aria-label="Adjust bottom page margin" title="Bottom margin / footer position"></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="ads-sidebar" aria-label="Advertisement space"></aside>
+  </main>
+
+  <footer class="status-bar" dir="ltr">
+    <div class="status-left"><span>Page <b id="page-number">1</b> of <b id="page-total">1</b></span><span id="word-count">0 words</span><span id="character-count">0 characters</span><span id="language-status">Urdu (Pakistan)</span></div>
+    <div class="status-right"><span>Editor: <b id="typing-status">Urdu phonetic</b></span><button id="status-zoom-out" type="button">−</button><input id="status-zoom-range" type="range" min="70" max="130" value="100" aria-label="Zoom"><button id="status-zoom-in" type="button">+</button><span id="status-zoom-label">100%</span><button class="status-fit" type="button">Fit</button></div>
+  </footer>
+  <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
+    <form method="dialog"><button class="shortcuts-close" aria-label="Close keyboard shortcuts">×</button></form>
+    <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+    <dl>
+      <div><dt>Bold / Italic / Underline</dt><dd>Ctrl+B / Ctrl+I / Ctrl+U</dd></div>
+      <div><dt>Undo / Redo</dt><dd>Ctrl+Z / Ctrl+Y</dd></div>
+      <div><dt>Copy / Cut / Paste / Select all</dt><dd>Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+A</dd></div>
+      <div><dt>Find / Replace</dt><dd>Ctrl+F / Ctrl+H</dd></div>
+      <div><dt>Save on this device / Download project</dt><dd>Ctrl+S / Ctrl+Shift+S</dd></div>
+      <div><dt>Open file / New document / Print</dt><dd>Ctrl+O / Ctrl+N / Ctrl+P</dd></div>
+      <div><dt>Left / Center / Right / Justify</dt><dd>Ctrl+L / Ctrl+E / Ctrl+R / Ctrl+J</dd></div>
+      <div><dt>Bulleted list / Numbered list</dt><dd>Ctrl+Shift+L / Ctrl+Shift+7</dd></div>
+      <div><dt>Insert link / Clear formatting</dt><dd>Ctrl+K / Ctrl+Space</dd></div>
+      <div><dt>Heading 1, 2, or 3</dt><dd>Ctrl+Alt+1 / 2 / 3</dd></div>
+    </dl>
+    <p>Copy, cut, paste, select-all, and cursor navigation use your browser’s built-in editing shortcuts.</p>
+  </dialog>
+  <button id="focus-exit-button" class="focus-exit-button" type="button" aria-label="Exit focus mode">⛶ <span>Back to editor</span></button>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
