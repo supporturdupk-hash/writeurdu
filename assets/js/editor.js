@@ -8,7 +8,7 @@
   let activeDocumentId = '';
   let saveTimer;
   let zoom = 100;
-  let phoneticTyping = true;
+  let urduTyping = true;
   let landscape = false;
   let pageSize = 'A4';
   let customPageDimensions = null;
@@ -155,50 +155,24 @@
     });
   }
 
-  const urduWords = new Map(Object.entries({
-    salam: 'سلام', salaam: 'سلام', assalamualaikum: 'السلام علیکم', asalamualaikum: 'السلام علیکم',
-    alaikum: 'علیکم', alaykum: 'علیکم', allah: 'اللہ', bismillah: 'بسم اللہ',
-    urdu: 'اردو', pakistan: 'پاکستان', khuda: 'خدا', abdul: 'عبدال',
-    shukriya: 'شکریہ', meherbani: 'مہربانی', mehrbani: 'مہربانی', bohat: 'بہت',
-    bahut: 'بہت', acha: 'اچھا', achha: 'اچھا', achi: 'اچھی', achhi: 'اچھی',
-    aap: 'آپ', ap: 'آپ', apka: 'آپ کا', aapka: 'آپ کا', aapki: 'آپ کی',
-    main: 'میں', mein: 'میں', hum: 'ہم', tum: 'تم', mera: 'میرا', meri: 'میری',
-    mere: 'میرے', naam: 'نام', kya: 'کیا', kiya: 'کیا', hai: 'ہے', hain: 'ہیں',
-    he: 'ہے', ho: 'ہو', tha: 'تھا', thi: 'تھی', the: 'تھے', ka: 'کا', ki: 'کی',
-    ke: 'کے', ko: 'کو', se: 'سے', mein: 'میں', par: 'پر', aur: 'اور', or: 'اور',
-    ye: 'یہ', yeh: 'یہ', wo: 'وہ', woh: 'وہ', is: 'اس', aik: 'ایک', ek: 'ایک',
-    likhna: 'لکھنا', likho: 'لکھو', likhen: 'لکھیں', parhna: 'پڑھنا',
-    zindagi: 'زندگی', duniya: 'دنیا', dunya: 'دنیا', pyar: 'پیار', pyaar: 'پیار',
-    dost: 'دوست', kitab: 'کتاب', kitaab: 'کتاب', ghar: 'گھر', pani: 'پانی',
-    paani: 'پانی', aaj: 'آج', kal: 'کل', acha: 'اچھا', mashallah: 'ماشاءاللہ',
-    inshallah: 'ان شاء اللہ', inshAllah: 'ان شاء اللہ', khush: 'خوش', waqt: 'وقت',
-    mera: 'میرا', apni: 'اپنی', apna: 'اپنا', sath: 'ساتھ', saath: 'ساتھ',
-    online: 'آن لائن', likh: 'لکھ', karo: 'کرو', karein: 'کریں', karen: 'کریں',
-    nahi: 'نہیں', nahin: 'نہیں',
-    subah: 'صبح', raat: 'رات', shaam: 'شام', chahiye: 'چاہیے', mujhe: 'مجھے',
-    mujhay: 'مجھے', apko: 'آپ کو', aapko: 'آپ کو', hamara: 'ہمارا',
-    bara: 'بڑا', chota: 'چھوٹا', naye: 'نئے', naya: 'نیا'
-  }));
+  const urduKeyboardMap = Object.freeze({
+    '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵',
+    '6': '۶', '7': '۷', '8': '۸', '9': '۹', '0': '۰',
+    q: 'ق', w: 'و', e: 'ع', r: 'ر', t: 'ت', y: 'ے', u: 'ء', i: 'ی', o: 'ہ', p: 'پ',
+    '[': '[', ']': ']',
+    a: 'ا', s: 'س', d: 'د', f: 'ف', g: 'گ', h: 'ہ', j: 'ج', k: 'ک', l: 'ل',
+    ';': '؛', "'": 'ع',
+    z: 'ز', x: 'ش', c: 'چ', v: 'ط', b: 'ب', n: 'ن', m: 'م',
+    ',': '،', '.': '۔', '/': '؟'
+  });
+  const shiftedUrduKeyboardMap = Object.freeze({
+    Q: 'و', W: 'ۃ', E: 'ع', R: 'ز', T: 'ط', Y: 'ـ', U: 'ک', I: 'ا', O: 'ۃ', P: 'ؤ',
+    A: 'آ', S: 'ص', D: 'ذ', F: 'ئ', G: 'غ', H: 'ح', J: 'ض', K: 'خ', L: 'لا',
+    Z: 'ذ', X: 'ژ', C: 'ث', V: 'ظ', B: 'ض', N: 'ں', M: 'ء'
+  });
 
-  function transliterateRomanUrdu(word) {
-    const lower = word.toLocaleLowerCase();
-    if (urduWords.has(lower)) return urduWords.get(lower);
-
-    const phonemes = [
-      [/sh/g, 'ش'], [/ch/g, 'چ'], [/kh/g, 'خ'], [/gh/g, 'غ'], [/zh/g, 'ژ'],
-      [/th/g, 'تھ'], [/dh/g, 'دھ'], [/bh/g, 'بھ'], [/ph/g, 'پھ'], [/jh/g, 'جھ'],
-      [/aa/g, 'ا'], [/ee|ii/g, 'ی'], [/oo|uu/g, 'و'], [/ai|ay|ei/g, 'ے'],
-      [/au|ou/g, 'و'], [/ng/g, 'نگ']
-    ];
-    let result = lower;
-    phonemes.forEach(([pattern, letter]) => { result = result.replace(pattern, letter); });
-    const letters = {
-      a: 'ا', b: 'ب', c: 'ک', d: 'د', e: 'ے', f: 'ف', g: 'گ', h: 'ہ', i: 'ی',
-      j: 'ج', k: 'ک', l: 'ل', m: 'م', n: 'ن', o: 'و', p: 'پ', q: 'ق', r: 'ر',
-      s: 'س', t: 'ت', u: 'و', v: 'و', w: 'و', x: 'کس', y: 'ی', z: 'ز',
-      "'": 'ع'
-    };
-    return Array.from(result, (character) => letters[character] || character).join('');
+  function mapUrduKey(key) {
+    return shiftedUrduKeyboardMap[key] || urduKeyboardMap[key.toLocaleLowerCase()] || key;
   }
 
   function showToast(message) {
@@ -207,37 +181,6 @@
     toast.classList.add('visible');
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toast.classList.remove('visible'), 2400);
-  }
-
-  function convertTypedRomanWord(finalize = false) {
-    const selection = window.getSelection();
-    if (!selection || !selection.isCollapsed || !selection.rangeCount) return;
-    const caret = selection.getRangeAt(0);
-    const node = caret.startContainer;
-    if (node.nodeType !== Node.TEXT_NODE || !editor.contains(node)) return;
-    const beforeCaret = node.textContent.slice(0, caret.startOffset);
-    const match = beforeCaret.match(finalize
-      ? /([A-Za-z']+)([ \t\n\u00a0.,!?;:]?)$/
-      : /([A-Za-z']+)([ \t\n\u00a0.,!?;:])$/);
-    if (!match) return;
-    const romanWord = match[1];
-    const replacement = document.createTextNode(transliterateRomanUrdu(romanWord));
-    const range = document.createRange();
-    range.setStart(node, caret.startOffset - match[0].length);
-    range.setEnd(node, caret.startOffset - match[2].length);
-    range.deleteContents();
-    range.insertNode(replacement);
-    const suffix = replacement.nextSibling;
-    if (suffix && suffix.nodeType === Node.TEXT_NODE && suffix.textContent) {
-      const punctuation = { ',': '،', '?': '؟', ';': '؛' }[suffix.textContent[0]];
-      if (punctuation) suffix.textContent = punctuation + suffix.textContent.slice(1);
-      range.setStart(suffix, 1);
-    } else {
-      range.setStartAfter(replacement);
-    }
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
   }
 
   function syncZoomControls() {
@@ -813,12 +756,12 @@
       } else if (key === 'Enter') {
         document.execCommand('insertParagraph');
       } else {
-        const wasPhoneticTyping = phoneticTyping;
-        if (keyboardLayout === 'english') phoneticTyping = false;
+        const wasUrduTyping = urduTyping;
+        if (keyboardLayout === 'english') urduTyping = false;
         try {
           document.execCommand('insertText', false, key);
         } finally {
-          phoneticTyping = wasPhoneticTyping;
+          urduTyping = wasUrduTyping;
         }
       }
       rememberEditorSelection();
@@ -871,12 +814,16 @@
 
   editor.addEventListener('input', () => {
     cleanPendingSizeMarkers();
-    if (phoneticTyping) convertTypedRomanWord();
     updateCounts();
     scheduleSave();
   });
   editor.addEventListener('keydown', (event) => {
-    if (phoneticTyping && event.key === 'Enter') convertTypedRomanWord(true);
+    if (!urduTyping || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
+      event.key.length !== 1) return;
+    const output = mapUrduKey(event.key);
+    if (output === event.key) return;
+    event.preventDefault();
+    document.execCommand('insertText', false, output);
   });
   editor.addEventListener('paste', (event) => {
     const html = event.clipboardData && event.clipboardData.getData('text/html');
@@ -1690,12 +1637,12 @@
     });
   });
   document.getElementById('typing-toggle').addEventListener('click', (event) => {
-    phoneticTyping = !phoneticTyping;
-    event.currentTarget.classList.toggle('active', phoneticTyping);
-    event.currentTarget.setAttribute('aria-pressed', String(phoneticTyping));
-    event.currentTarget.querySelector('strong').textContent = phoneticTyping ? 'ON' : 'OFF';
-    event.currentTarget.title = phoneticTyping ? 'Urdu phonetic typing is on' : 'Urdu phonetic typing is off';
-    document.getElementById('typing-status').textContent = phoneticTyping ? 'Urdu phonetic' : 'English';
+    urduTyping = !urduTyping;
+    event.currentTarget.classList.toggle('active', urduTyping);
+    event.currentTarget.setAttribute('aria-pressed', String(urduTyping));
+    event.currentTarget.querySelector('strong').textContent = urduTyping ? 'ON' : 'OFF';
+    event.currentTarget.title = urduTyping ? 'Urdu keyboard mapping is on' : 'English typing is on';
+    document.getElementById('typing-status').textContent = urduTyping ? 'Urdu keyboard' : 'English';
   });
   document.getElementById('typing-help-button').addEventListener('click', () => {
     document.getElementById('shortcuts-dialog').showModal();

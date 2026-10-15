@@ -41,7 +41,7 @@
     <span class="tab-spacer"></span>
     <div class="tab-actions">
       <button id="typing-help-button" class="help-button" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
-      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu phonetic typing" aria-pressed="true" title="Toggle Urdu phonetic typing">
+      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu keyboard mapping" aria-pressed="true" title="Toggle Urdu keyboard mapping">
         <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
       </button>
       <button id="focus-toggle" class="header-button focus-action" type="button" aria-pressed="false">⛶ <span>Focus</span></button>
@@ -369,7 +369,7 @@
       </div>
       <div class="document-stage">
         <div class="page-frame">
-          <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type Roman Urdu then press space to convert to Urdu." aria-multiline="true" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
+          <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
           <div class="vertical-ruler" aria-label="Vertical page ruler">
             <div class="vertical-ruler-track" id="vertical-ruler">
               <div class="vertical-ruler-scale" aria-hidden="true"></div>
@@ -385,7 +385,7 @@
 
   <footer class="status-bar" dir="ltr">
     <div class="status-left"><span>Page <b id="page-number">1</b> of <b id="page-total">1</b></span><span id="word-count">0 words</span><span id="character-count">0 characters</span><span id="language-status">Urdu (Pakistan)</span></div>
-    <div class="status-right"><span>Editor: <b id="typing-status">Urdu phonetic</b></span><button id="status-zoom-out" type="button">−</button><input id="status-zoom-range" type="range" min="70" max="130" value="100" aria-label="Zoom"><button id="status-zoom-in" type="button">+</button><span id="status-zoom-label">100%</span><button class="status-fit" type="button">Fit</button></div>
+    <div class="status-right"><span>Editor: <b id="typing-status">Urdu keyboard</b></span><button id="status-zoom-out" type="button">−</button><input id="status-zoom-range" type="range" min="70" max="130" value="100" aria-label="Zoom"><button id="status-zoom-in" type="button">+</button><span id="status-zoom-label">100%</span><button class="status-fit" type="button">Fit</button></div>
   </footer>
   <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
     <form method="dialog"><button class="shortcuts-close" aria-label="Close keyboard shortcuts">×</button></form>
