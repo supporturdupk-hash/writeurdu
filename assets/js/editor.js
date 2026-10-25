@@ -2707,19 +2707,30 @@
     return true;
   };
   const insertTableColumn = (table, index, position = 'right') => {
-    const columns = getTableColumnCount(table) + 1;
-    Array.from(table.rows).forEach((row) => {
-      const reference = row.cells[index];
-      const newCell = createTableCell(reference ? reference.tagName.toLowerCase() : 'td');
-      row.insertBefore(newCell, position === 'left' ? reference : reference && reference.nextSibling);
-      Array.from(row.cells).forEach((cell) => {
-        cell.style.width = `${100 / columns}%`;
+    const rows = Array.from(table.rows);
+    const firstRow = rows[0];
+    if (!firstRow || rows.some((row) => row.cells.length !== firstRow.cells.length ||
+      Array.from(row.cells).some((cell) => cell.colSpan !== 1 || cell.rowSpan !== 1))) {
+      showToast('Add a column after unmerging table cells.');
+      return null;
+    }
+    const sourceIndex = Math.max(0, Math.min(index, firstRow.cells.length - 1));
+    const insertionIndex = position === 'left' ? sourceIndex : sourceIndex + 1;
+    const widths = Array.from(firstRow.cells, (cell) => cell.getBoundingClientRect().width);
+    const sharedWidth = widths[sourceIndex] / 2;
+    widths[sourceIndex] = sharedWidth;
+    widths.splice(insertionIndex, 0, sharedWidth);
+    rows.forEach((row) => {
+      const reference = row.cells[sourceIndex];
+      const newCell = createMatchingEmptyCell(reference);
+      newCell.removeAttribute('id');
+      row.insertBefore(newCell, position === 'left' ? reference : reference.nextSibling);
+      Array.from(row.cells).forEach((cell, columnIndex) => {
+        cell.style.width = `${widths[columnIndex]}px`;
       });
     });
-    table.style.width = '100%';
-    table.style.maxWidth = '100%';
     table.style.tableLayout = 'fixed';
-    table.setAttribute('width', '100%');
+    return insertionIndex;
   };
   const createTableCell = (tagName) => {
     return document.createElement(tagName);
@@ -2764,16 +2775,23 @@
       if (!canExpandTable(table, 1, 0)) return;
       const sourceRow = table.rows[index];
       if (!sourceRow) return;
+      const sourceHeight = sourceRow.getBoundingClientRect().height;
       const newRow = sourceRow.cloneNode(false);
+      newRow.removeAttribute('id');
+      newRow.style.height = `${sourceHeight}px`;
       Array.from(sourceRow.cells).forEach((sourceCell) => {
-        newRow.append(createMatchingEmptyCell(sourceCell));
+        const newCell = createMatchingEmptyCell(sourceCell);
+        newCell.removeAttribute('id');
+        newCell.style.height = `${sourceCell.getBoundingClientRect().height}px`;
+        newRow.append(newCell);
       });
       sourceRow.parentElement.insertBefore(newRow, sourceRow.nextSibling);
       focusTableCell(newRow.cells[0]);
     } else {
       if (!canExpandTable(table, 0, 1)) return;
-      insertTableColumn(table, index);
-      focusTableCell(table.rows[0].cells[index + 1]);
+      const insertionIndex = insertTableColumn(table, index);
+      if (insertionIndex === null) return;
+      focusTableCell(table.rows[0].cells[insertionIndex]);
     }
     applyTableDesign(table);
     refreshTableManipulators(table);
