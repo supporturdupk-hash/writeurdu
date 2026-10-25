@@ -10,6 +10,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/home.css">
+  <script src="assets/js/urdu-keyboard.js" defer></script>
+  <script src="assets/js/guide.js" defer></script>
 </head>
 <body>
   <header class="home-header" dir="ltr">
@@ -45,11 +47,15 @@
       <p>Choose <strong>Create a document</strong> to open a blank page, or select a template card for a letter, essay, or poem. The editor opens with the document name at the top and a writing page below the formatting ribbon. Rename the file before you begin so it is easy to find in your saved-files list.</p>
 
       <h2 id="typing">2. Type Urdu with an English keyboard</h2>
-      <p>Urdu keyboard mapping is on by default. Press the English QWERTY keys on your physical keyboard and each Urdu letter appears immediately; Space only adds a space between words. For example, Q enters ق, W enters و, E enters ع, and A enters ا. The on-screen keyboard is unchanged and its English layout continues to enter English characters.</p>
-      <div class="guide-example">
-        <div><small>Press these keys</small><p>Q, then A</p></div>
-        <div><small>They appear as you type</small><p class="guide-urdu" lang="ur">قا</p></div>
-      </div>
+      <p>Urdu keyboard mapping is on by default. Use the English keys shown below; the letter printed on your physical key produces the matching Urdu character in the chart. Hold Shift for entries marked “Shift +”. For example, M produces م and Shift+A produces آ.</p>
+      <section class="guide-keyboard" aria-labelledby="keyboard-chart-title">
+        <h3 id="keyboard-chart-title">Check or try an English key</h3>
+        <label for="keyboard-test">Click here and type with your English keyboard</label>
+        <input id="keyboard-test" type="text" dir="rtl" lang="ur" autocomplete="off" spellcheck="false" aria-describedby="keyboard-test-help">
+        <p id="keyboard-test-help">Or click any key in the chart to see its Urdu character.</p>
+        <div id="keyboard-preview" class="keyboard-preview" lang="ur" aria-live="polite">Urdu output appears here</div>
+        <div id="keyboard-layout" class="keyboard-layout" dir="ltr" aria-label="English to Urdu keyboard map"></div>
+      </section>
       <p>Switch the Urdu toggle off to type English characters. The Urdu and symbol keys on the on-screen keyboard remain available, and you can paste Urdu text from another source into the editor.</p>
 
       <h2 id="format">3. Format right-to-left text</h2>
@@ -70,12 +76,13 @@
       <p>Local browser storage is not cloud storage. Clearing site data, using private browsing, changing browsers, or using another device can make saved documents unavailable. Keep an exported backup of anything you cannot afford to lose.</p>
 
       <h2 id="tools">6. Use the editor tools</h2>
-      <p>The Layout tab controls page margins, orientation, paper size, columns, line numbers, page borders, and page color. The View tab provides Focus mode, ruler visibility, dark mode, and zoom. Use the Help tab for the writing guide, FAQ, contact and feedback pages, and keyboard shortcuts.</p>
-      <p>Open the on-screen keyboard when you need Urdu, English, or symbol keys. Use Find to locate text and Replace to change matching text. The three-dot menu on a saved file card provides Open, Download, Print, and Delete actions.</p>
+      <p>The Layout tab controls page margins, orientation, paper size, columns, line numbers, page borders, and page color. Choose Preview to inspect the document before printing. Use Header and Footer on the Insert tab to edit text that repeats on printed pages.</p>
+      <p>Select a table cell to add or remove rows and columns, change cell color and text alignment, set borders, or adjust table width. Select an inserted picture to resize it, choose text wrapping, align it, or remove it. The View tab also provides ruler visibility, dark mode, and zoom.</p>
+      <p>Use Urdu → English to transliterate selected text or, with no selection, the full document into Roman Urdu. The Urdu typing toggle switches English-key Urdu typing on or off. Open the on-screen keyboard when you need Urdu, English, or symbol keys. Use Find to locate text and Replace to change matching text.</p>
 
       <h2 id="troubleshoot">7. Troubleshoot common issues</h2>
       <h3>An English key did not enter the Urdu letter I expected</h3>
-      <p>Check that Urdu keyboard mapping is on, then use this guide’s QWERTY examples to confirm the key mapping. Switch the Urdu toggle off when you want to type English.</p>
+      <p>Check that Urdu keyboard mapping is on, then use the interactive key chart above to confirm which Urdu character each English key produces. Switch the Urdu toggle off when you want to type English.</p>
       <h3>My saved file is missing</h3>
       <p>Check that you are using the same browser profile and device where you wrote it. If site data was cleared, the local copy may be gone. Open any TXT or Urdu Writer JSON backup you previously exported.</p>
       <h3>The printed page looks different</h3>

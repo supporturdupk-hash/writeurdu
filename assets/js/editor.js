@@ -69,6 +69,8 @@
           clean.className = `document-${documentRegion}`;
         } else if (name === 'data-document-region' && node.tagName === 'DIV' && value === documentRegion) {
           clean.dataset.documentRegion = value;
+        } else if (name === 'data-empty' && node.tagName === 'DIV' && documentRegion && ['true', 'false'].includes(value)) {
+          clean.dataset.empty = value;
         } else if (name === 'data-page-number-field' && isPageNumberField) {
           clean.dataset.pageNumberField = value;
         } else if (name === 'data-page-number-set' && node.tagName === 'SPAN' && value === 'true') {
@@ -76,7 +78,7 @@
         } else if (name === 'contenteditable' && value === 'false' &&
           (node.classList.contains('page-break') || node.classList.contains('column-break') || isPageNumberField)) {
           clean.setAttribute(name, 'false');
-        } else if (['colspan', 'rowspan'].includes(name) && node.tagName === 'TD') {
+        } else if (['colspan', 'rowspan'].includes(name) && ['TD', 'TH'].includes(node.tagName)) {
           const span = Number.parseInt(value, 10);
           if (Number.isInteger(span) && span >= 1 && span <= 20) clean.setAttribute(name, String(span));
         } else if (name === 'size' && node.tagName === 'FONT' && /^[1-7]$/.test(value)) {
@@ -95,17 +97,56 @@
           clean.setAttribute('src', value);
         } else if (name === 'alt' && node.tagName === 'IMG') {
           clean.setAttribute('alt', value.slice(0, 200));
+        } else if (name === 'width' && node.tagName === 'IMG') {
+          const width = Number.parseInt(value, 10);
+          if (Number.isInteger(width) && width >= 40 && width <= 2000) clean.setAttribute('width', String(width));
+        } else if (name === 'width' && node.tagName === 'TABLE' && /^(?:[1-9]\d?|100)%$/.test(value)) {
+          clean.setAttribute('width', value);
+        } else if (name === 'data-image-wrap' && node.tagName === 'IMG' &&
+          ['inline', 'square', 'top-bottom', 'behind', 'front'].includes(value)) {
+          clean.dataset.imageWrap = value;
+        } else if (name === 'data-image-align' && node.tagName === 'IMG' &&
+          ['left', 'center', 'right'].includes(value)) {
+          clean.dataset.imageAlign = value;
+        } else if (name === 'data-borders' && node.tagName === 'TABLE' &&
+          ['all', 'outside', 'inside', 'horizontal', 'vertical', 'none'].includes(value)) {
+          clean.dataset.borders = value;
+        } else if (name === 'data-border-width' && node.tagName === 'TABLE' && /^(?:[0-8])$/.test(value)) {
+          clean.dataset.borderWidth = value;
+        } else if (name === 'data-border-color' && node.tagName === 'TABLE' && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.borderColor = value;
+        } else if (name === 'data-canvas-table' && node.tagName === 'TABLE' && value === 'true') {
+          clean.dataset.canvasTable = 'true';
+        } else if (name === 'data-cell-border-color' && ['TD', 'TH'].includes(node.tagName) && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.cellBorderColor = value;
+        } else if (name === 'data-cell-border-width' && ['TD', 'TH'].includes(node.tagName) && /^(?:[0-8])$/.test(value)) {
+          clean.dataset.cellBorderWidth = value;
+        } else if (name === 'data-table-align' && node.tagName === 'TABLE' && ['left', 'center', 'right'].includes(value)) {
+          clean.dataset.tableAlign = value;
+        } else if (name === 'data-table-autofit' && node.tagName === 'TABLE' && ['fixed', 'window', 'contents'].includes(value)) {
+          clean.dataset.tableAutofit = value;
+        } else if (name === 'data-repeat-header' && node.tagName === 'TABLE' && value === 'true') {
+          clean.dataset.repeatHeader = 'true';
+        } else if (name === 'data-layer' && /^-10$|^-?[0-9]$|^10$/.test(value)) {
+          clean.dataset.layer = value;
         } else if (name === 'style') {
           const styles = [];
-          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'color', 'background-color']) {
+          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'width', 'height', 'z-index', 'table-layout']) {
             const styleValue = node.style.getPropertyValue(property).trim();
             if (!styleValue) continue;
             if (property === 'font-family' && fontFamilies.includes(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'font-size' && /^(?:\d{1,4}(?:\.\d{1,2})?(?:px|pt|em|rem|%))$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'width' && node.tagName === 'TABLE' && /^(?:auto|(?:[1-9]\d?|100)%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'width' && ['TD', 'TH'].includes(node.tagName) && /^(?:\d{1,4}(?:\.\d{1,6})?px|\d{1,3}%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'height' && ['TR', 'TD', 'TH'].includes(node.tagName) && /^(?:\d{1,4}(?:\.\d{1,6})?px)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'z-index' && /^-10$|^-?[0-9]$|^10$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'table-layout' && node.tagName === 'TABLE' && ['auto', 'fixed'].includes(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'font-weight' && /^(?:normal|bold|[1-9]00)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'font-style' && /^(?:normal|italic|oblique)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'text-decoration' && /^(?:none|underline|line-through|overline)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'text-align' && /^(?:left|right|center|justify)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'vertical-align' && ['TD', 'TH'].includes(node.tagName) && /^(?:top|middle|bottom)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'padding' && ['TD', 'TH'].includes(node.tagName) && /^(?:\d{1,2}px)(?: \d{1,2}px){0,3}$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'direction' && /^(?:ltr|rtl)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'list-style-type' && /^(?:disc|circle|square|decimal|upper-roman|lower-roman|upper-alpha|lower-alpha|decimal-paren|upper-roman-paren|lower-roman-paren|upper-alpha-paren|lower-alpha-paren|decimal-bracket|upper-roman-bracket|lower-roman-bracket|upper-alpha-bracket|lower-alpha-bracket|"(?:•|○|▪|▫|★|➜|\\+|−|♦|♢|❖|➤|☻|☹|✓|✗|□)")$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'line-height' && /^(?:\d+(?:\.\d+)?|normal)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
@@ -115,6 +156,15 @@
           if (styles.length) clean.setAttribute('style', styles.join(';'));
         }
       });
+      if (clean.tagName === 'TABLE') {
+        if (clean.dataset.borderWidth) clean.style.setProperty('--table-border-width', `${clean.dataset.borderWidth}px`);
+        if (clean.dataset.borderColor) clean.style.setProperty('--table-border-color', clean.dataset.borderColor);
+      }
+      if (['TD', 'TH'].includes(clean.tagName) && clean.dataset.cellBorderColor) {
+        clean.style.borderColor = clean.dataset.cellBorderColor;
+        clean.style.borderWidth = `${clean.dataset.cellBorderWidth || 1}px`;
+        clean.style.borderStyle = clean.dataset.cellBorderWidth === '0' ? 'none' : 'solid';
+      }
       Array.from(node.childNodes).forEach((child) => clean.append(cleanNode(child)));
       return clean;
     };
@@ -155,24 +205,130 @@
     });
   }
 
-  const urduKeyboardMap = Object.freeze({
-    '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵',
-    '6': '۶', '7': '۷', '8': '۸', '9': '۹', '0': '۰',
-    q: 'ق', w: 'و', e: 'ع', r: 'ر', t: 'ت', y: 'ے', u: 'ء', i: 'ی', o: 'ہ', p: 'پ',
-    '[': '[', ']': ']',
-    a: 'ا', s: 'س', d: 'د', f: 'ف', g: 'گ', h: 'ہ', j: 'ج', k: 'ک', l: 'ل',
-    ';': '؛', "'": 'ع',
-    z: 'ز', x: 'ش', c: 'چ', v: 'ط', b: 'ب', n: 'ن', m: 'م',
-    ',': '،', '.': '۔', '/': '؟'
-  });
-  const shiftedUrduKeyboardMap = Object.freeze({
-    Q: 'و', W: 'ۃ', E: 'ع', R: 'ز', T: 'ط', Y: 'ـ', U: 'ک', I: 'ا', O: 'ۃ', P: 'ؤ',
-    A: 'آ', S: 'ص', D: 'ذ', F: 'ئ', G: 'غ', H: 'ح', J: 'ض', K: 'خ', L: 'لا',
-    Z: 'ذ', X: 'ژ', C: 'ث', V: 'ظ', B: 'ض', N: 'ں', M: 'ء'
-  });
+  const wordSuggestions = document.getElementById('word-suggestions');
+  const urduDictionary = [
+    'آپ', 'آج', 'آسان', 'آسمان', 'آواز', 'آنا', 'آگے', 'آخری', 'آزاد', 'آزادی',
+    'اسلام', 'السلام', 'استاد', 'اسکول', 'اس لیے', 'اسے', 'اسکا', 'اسکی', 'اسکے',
+    'امید', 'انسان', 'انداز', 'اندر', 'انگریزی', 'انہیں', 'اہم', 'اہمیت',
+    'بات', 'بارش', 'بالکل', 'بہت', 'بہتر', 'بڑی', 'بچے', 'بچوں', 'بنا', 'بنائیں',
+    'پانی', 'پاکستان', 'پیار', 'پہلے', 'پھر', 'پڑھنا', 'پڑھیں',
+    'تعلیم', 'تجربہ', 'تک', 'تم', 'تمام', 'تو', 'تھا', 'تھی', 'تھے',
+    'جانا', 'جائیں', 'جائے', 'جیسے', 'جو', 'چاہیے', 'چاہتا', 'چاہتی', 'چاہتے',
+    'حالت', 'حقیقت', 'حکومت', 'خوبصورت', 'خوش', 'خیال', 'خیر',
+    'درخواست', 'دن', 'دنیا', 'دوست', 'دوسرا', 'دیکھیں',
+    'رہا', 'رہی', 'رہے', 'رکھیں', 'زندگی', 'زمین', 'زبان',
+    'ساتھ', 'سچ', 'سلام', 'سلامت', 'سمجھ', 'سمجھیں', 'سنیں', 'سیکھیں',
+    'شکریہ', 'شروع', 'شخص', 'شہر', 'شاید',
+    'صحیح', 'ضروری', 'طریقہ', 'عادت', 'علاقہ', 'علم', 'عمل', 'علیکم',
+    'فائدہ', 'فکر', 'فیصلہ',
+    'قابل', 'قلم', 'قومی',
+    'کام', 'کامیابی', 'کیا', 'کیوں', 'کیسے', 'کہاں', 'کب', 'کس', 'کسی', 'کچھ',
+    'کرنا', 'کرتا', 'کرتی', 'کرتے', 'کریں', 'کرو', 'کرتے ہیں',
+    'گھر', 'گفتگو', 'گیا', 'گئی', 'گئے',
+    'لکھنا', 'لکھیں', 'لکھتا', 'لکھتی', 'لکھتے', 'لیکن', 'لوگ', 'لہذا',
+    'ماں', 'ماحول', 'ماہر', 'مبارک', 'مبارکباد', 'مبنی', 'متاثر', 'متعلق',
+    'مثال', 'مختلف', 'محفوظ', 'محنت', 'محبوب', 'محبت', 'محترم', 'محسوس',
+    'محروم', 'محلہ', 'محمد', 'مدد', 'مددگار', 'مدرسہ', 'مدرسے', 'مدت',
+    'مذہب', 'مذہبی', 'مرتب', 'مرحلہ', 'مرحلے', 'مرکز', 'مزید', 'مستقبل',
+    'مستقل', 'مسئلہ', 'مسائل', 'مسجد', 'مسکرا', 'مشکل', 'مشورہ', 'مشہور',
+    'مشین', 'مشرق', 'مشغول', 'مصروف', 'مضمون', 'معلومات', 'معلوم', 'معنی',
+    'معاشرہ', 'معاشرے', 'معافی', 'معاہدہ', 'معاونت', 'مفید', 'مقصد', 'مقابلہ',
+    'مختلف', 'مکمل', 'مکان', 'مکتب', 'مگر', 'ملازمت', 'ملنا', 'ملک',
+    'ملی', 'مناسب', 'منظر', 'منصوبہ', 'منصوبے', 'منفرد', 'موقع', 'مواقع',
+    'موجود', 'موجودہ', 'موسم', 'موسیقی', 'موت', 'مومن', 'میاں',
+    'میرا', 'میری', 'میرے', 'میں',
+    'نہیں', 'نیا', 'نئی', 'نئے', 'نام', 'نظم', 'نیچے',
+    'وقت', 'والا', 'والی', 'والے', 'وجہ', 'وہ', 'وہاں',
+    'یہ', 'یہاں', 'یہی', 'یاد', 'یقین'
+  ];
+  let activeSuggestionIndex = 0;
+  let suggestionRange = null;
 
-  function mapUrduKey(key) {
-    return shiftedUrduKeyboardMap[key] || urduKeyboardMap[key.toLocaleLowerCase()] || key;
+  function hideWordSuggestions() {
+    wordSuggestions.hidden = true;
+    wordSuggestions.replaceChildren();
+    suggestionRange = null;
+    editor.removeAttribute('aria-activedescendant');
+  }
+
+  function positionWordSuggestions(range) {
+    const caret = range.getBoundingClientRect();
+    const width = 220;
+    const left = Math.max(8, Math.min(caret.left, window.innerWidth - width - 8));
+    const top = caret.bottom + 6 + 240 > window.innerHeight
+      ? Math.max(8, caret.top - 246)
+      : Math.min(window.innerHeight - 248, caret.bottom + 6);
+    wordSuggestions.style.left = `${left}px`;
+    wordSuggestions.style.top = `${top}px`;
+  }
+
+  function updateWordSuggestions() {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount || !selection.isCollapsed ||
+      !editor.contains(selection.anchorNode) || selection.anchorNode.nodeType !== Node.TEXT_NODE) {
+      hideWordSuggestions();
+      return;
+    }
+
+    const caretRange = selection.getRangeAt(0).cloneRange();
+    const prefixRange = caretRange.cloneRange();
+    prefixRange.selectNodeContents(editor);
+    prefixRange.setEnd(caretRange.startContainer, caretRange.startOffset);
+    const wordMatch = prefixRange.toString().match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+$/u);
+    if (!wordMatch ||
+      caretRange.startContainer.textContent.slice(caretRange.startOffset - wordMatch[0].length, caretRange.startOffset) !== wordMatch[0]) {
+      hideWordSuggestions();
+      return;
+    }
+
+    const matches = [...new Set(urduDictionary)]
+      .filter((word) => word.startsWith(wordMatch[0]) && word !== wordMatch[0]);
+    if (!matches.length) {
+      hideWordSuggestions();
+      return;
+    }
+
+    suggestionRange = caretRange.cloneRange();
+    suggestionRange.setStart(caretRange.startContainer, caretRange.startOffset - wordMatch[0].length);
+    activeSuggestionIndex = 0;
+    wordSuggestions.replaceChildren();
+    matches.forEach((word, index) => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'word-suggestion';
+      option.id = `word-suggestion-${index}`;
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', String(index === activeSuggestionIndex));
+      option.textContent = word;
+      option.addEventListener('pointerdown', (event) => event.preventDefault());
+      option.addEventListener('click', () => acceptWordSuggestion(index));
+      wordSuggestions.append(option);
+    });
+    wordSuggestions.hidden = false;
+    editor.setAttribute('aria-activedescendant', 'word-suggestion-0');
+    positionWordSuggestions(caretRange);
+  }
+
+  function acceptWordSuggestion(index = activeSuggestionIndex) {
+    const option = wordSuggestions.children[index];
+    if (!option || !suggestionRange || !editor.contains(suggestionRange.commonAncestorContainer)) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(suggestionRange);
+    editor.focus();
+    document.execCommand('insertText', false, option.textContent);
+    hideWordSuggestions();
+    rememberEditorSelection();
+    updateCounts();
+    scheduleSave();
+  }
+
+  function moveWordSuggestionSelection(direction) {
+    const options = Array.from(wordSuggestions.children);
+    activeSuggestionIndex = (activeSuggestionIndex + direction + options.length) % options.length;
+    options.forEach((option, index) => option.setAttribute('aria-selected', String(index === activeSuggestionIndex)));
+    editor.setAttribute('aria-activedescendant', options[activeSuggestionIndex].id);
   }
 
   function showToast(message) {
@@ -488,6 +644,7 @@
     protectSelectedRange = false;
     lastFormattedSpan = null;
     rememberEditorSelection();
+    updateWordSuggestions();
   });
   editor.addEventListener('keyup', () => {
     protectSelectedRange = false;
@@ -707,6 +864,40 @@
     updateCounts();
   }
 
+  function insertEditableTableElement(table) {
+    const tableCount = editor.querySelectorAll('table[data-canvas-table="true"]').length;
+    const insertionRange = savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
+      ? savedEditorRange.cloneRange()
+      : null;
+    insertHtml(`${table.outerHTML}<p><br></p>`);
+    if (editor.querySelectorAll('table[data-canvas-table="true"]').length === tableCount) {
+      const spacer = document.createElement('p');
+      spacer.append(document.createElement('br'));
+      if (insertionRange) {
+        insertionRange.deleteContents();
+        insertionRange.insertNode(table);
+        table.after(spacer);
+        insertionRange.setStartAfter(spacer);
+      } else {
+        editor.append(table, spacer);
+        insertionRange?.setStartAfter(spacer);
+      }
+      if (insertionRange) {
+        insertionRange.collapse(true);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(insertionRange);
+        savedEditorRange = insertionRange.cloneRange();
+      }
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertHTML' }));
+      scheduleSave();
+      updateCounts();
+    }
+    const insertedTable = editor.querySelector('table[data-table-insertion-token]');
+    if (insertedTable) insertedTable.removeAttribute('data-table-insertion-token');
+    return insertedTable;
+  }
+
   const keyboardToggle = document.getElementById('onscreen-keyboard-toggle');
   const onscreenKeyboard = document.getElementById('onscreen-keyboard');
   let keyboardShifted = false;
@@ -816,15 +1007,35 @@
     cleanPendingSizeMarkers();
     updateCounts();
     scheduleSave();
+    updateWordSuggestions();
   });
   editor.addEventListener('keydown', (event) => {
+    if (!wordSuggestions.hidden) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        moveWordSuggestionSelection(event.key === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        acceptWordSuggestion();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        hideWordSuggestions();
+        return;
+      }
+      if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) hideWordSuggestions();
+    }
     if (!urduTyping || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
       event.key.length !== 1) return;
-    const output = mapUrduKey(event.key);
+    const output = UrduKeyboardLayout.mapKey(event);
     if (output === event.key) return;
     event.preventDefault();
     document.execCommand('insertText', false, output);
   });
+  editor.addEventListener('blur', hideWordSuggestions);
   editor.addEventListener('paste', (event) => {
     const html = event.clipboardData && event.clipboardData.getData('text/html');
     if (!html) return;
@@ -1420,11 +1631,138 @@
 
   document.getElementById('find-button').addEventListener('click', () => openFindPanel(false));
   document.getElementById('replace-button').addEventListener('click', () => openFindPanel(true));
-  function insertTable(rows, columns) {
-    const cells = Array.from({ length: rows }, () =>
-      `<tr>${Array.from({ length: columns }, () => '<td><br></td>').join('')}</tr>`).join('');
-    insertHtml(`<table><tbody>${cells}</tbody></table><p><br></p>`);
+  const tablePickerGrid = document.getElementById('table-picker-grid');
+  const tablePickerLabel = document.getElementById('table-picker-label');
+  const tablePickerCells = [];
+  for (let row = 1; row <= 8; row += 1) {
+    for (let column = 1; column <= 10; column += 1) {
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'table-picker-cell';
+      cell.setAttribute('role', 'gridcell');
+      cell.dataset.rows = String(row);
+      cell.dataset.columns = String(column);
+      cell.setAttribute('aria-label', `${column} columns by ${row} rows`);
+      cell.setAttribute('aria-selected', 'false');
+      tablePickerGrid.append(cell);
+      tablePickerCells.push(cell);
+    }
   }
+  const highlightTablePicker = (rows, columns) => {
+    tablePickerLabel.textContent = `${columns}×${rows} Table`;
+    tablePickerCells.forEach((cell) => {
+      const selected = Number(cell.dataset.rows) <= rows && Number(cell.dataset.columns) <= columns;
+      cell.classList.toggle('is-highlighted', selected);
+      cell.setAttribute('aria-selected', String(selected));
+    });
+  };
+  const clearTablePicker = () => {
+    tablePickerLabel.textContent = 'Insert Table';
+    tablePickerCells.forEach((cell) => {
+      cell.classList.remove('is-highlighted');
+      cell.setAttribute('aria-selected', 'false');
+    });
+  };
+  tablePickerGrid.addEventListener('pointerover', (event) => {
+    const cell = event.target.closest('.table-picker-cell');
+    if (cell) highlightTablePicker(Number(cell.dataset.rows), Number(cell.dataset.columns));
+  });
+  tablePickerGrid.addEventListener('focusin', (event) => {
+    const cell = event.target.closest('.table-picker-cell');
+    if (cell) highlightTablePicker(Number(cell.dataset.rows), Number(cell.dataset.columns));
+  });
+  tablePickerGrid.addEventListener('pointerleave', () => {
+    if (!tablePickerGrid.contains(document.activeElement)) clearTablePicker();
+  });
+  tablePickerGrid.addEventListener('focusout', (event) => {
+    if (!tablePickerGrid.contains(event.relatedTarget)) clearTablePicker();
+  });
+  tablePickerGrid.addEventListener('click', (event) => {
+    const cell = event.target.closest('.table-picker-cell');
+    if (!cell) return;
+    const rows = Number(cell.dataset.rows);
+    const columns = Number(cell.dataset.columns);
+    document.getElementById('table-create-rows').value = String(rows);
+    document.getElementById('table-create-columns').value = String(columns);
+    insertTableIntoDocument(rows, columns);
+  });
+  const insertTableIntoDocument = (rowCount, columnCount) => {
+    const rows = Number(rowCount);
+    const columns = Number(columnCount);
+    const cellWidth = Number(document.getElementById('table-create-width').value);
+    const cellHeight = Number(document.getElementById('table-create-height').value);
+    if (!Number.isInteger(rows) || !Number.isInteger(columns) || rows < 1 || columns < 1 ||
+      rows > 20 || columns > 20 || rows * columns > 400) {
+      showToast('Choose between 1 and 20 rows and columns, with no more than 400 cells.');
+      return false;
+    }
+    if (!Number.isFinite(cellWidth) || cellWidth < 40 || cellWidth > 240 ||
+      !Number.isFinite(cellHeight) || cellHeight < 28 || cellHeight > 120) {
+      showToast('Cell width must be 40–240 px and cell height 28–120 px.');
+      return false;
+    }
+
+    const availableWidth = Math.max(1,
+      editor.clientWidth - parseFloat(getComputedStyle(editor).paddingLeft) -
+      parseFloat(getComputedStyle(editor).paddingRight));
+    const table = document.createElement('table');
+    table.dataset.canvasTable = 'true';
+    table.dataset.tableInsertionToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    table.dataset.borderWidth = '1';
+    table.dataset.borderColor = '#aeb6c5';
+    table.style.width = `${Math.max(10, Math.min(100, Math.round(columns * cellWidth / availableWidth * 100)))}%`;
+    table.style.tableLayout = 'fixed';
+    const body = table.createTBody();
+    for (let row = 0; row < rows; row += 1) {
+      const tableRow = body.insertRow();
+      tableRow.style.height = `${cellHeight}px`;
+      for (let column = 0; column < columns; column += 1) {
+        const cell = tableRow.insertCell();
+        cell.style.width = `${100 / columns}%`;
+        cell.style.height = `${cellHeight}px`;
+        cell.style.textAlign = 'right';
+        cell.style.direction = 'rtl';
+        cell.style.fontFamily = "'Noto Nastaliq Urdu', serif";
+        cell.dataset.cellBorderColor = '#aeb6c5';
+        cell.dataset.cellBorderWidth = '1';
+        cell.append(document.createElement('br'));
+      }
+    }
+
+    closeInsertMenus();
+    const insertedTable = insertEditableTableElement(table);
+    const firstCell = insertedTable && insertedTable.rows[0] && insertedTable.rows[0].cells[0];
+    if (!firstCell) {
+      showToast('Could not insert the table. Try again.');
+      return false;
+    }
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(firstCell);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    savedEditorRange = range.cloneRange();
+    updateTableToolbar(firstCell);
+    scheduleSave();
+    updateCounts();
+    return true;
+  };
+  document.getElementById('table-custom-toggle').addEventListener('click', (event) => {
+    const button = event.currentTarget;
+    const fields = document.getElementById('table-create-fields');
+    const expanded = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(expanded));
+    fields.hidden = !expanded;
+    if (expanded) document.getElementById('table-create-rows').focus();
+  });
+  document.getElementById('table-create-button').addEventListener('click', () => {
+    insertTableIntoDocument(
+      document.getElementById('table-create-rows').value,
+      document.getElementById('table-create-columns').value
+    );
+  });
   const insertMenus = [
     { button: document.getElementById('table-button'), menu: document.getElementById('table-menu') },
     { button: document.getElementById('page-number-button'), menu: document.getElementById('page-number-menu') },
@@ -1454,38 +1792,6 @@
         positionInsertMenu(menu, button);
       }
     });
-  });
-  const tablePicker = document.querySelector('.table-picker-grid');
-  const tableSizeLabel = document.getElementById('table-size-label');
-  const setTablePickerSize = (rows, columns) => {
-    tableSizeLabel.textContent = `${columns} × ${rows} Table`;
-    tablePicker.querySelectorAll('button').forEach((cell) => {
-      const selected = Number(cell.dataset.row) <= rows && Number(cell.dataset.column) <= columns;
-      cell.classList.toggle('selected', selected);
-      cell.setAttribute('aria-selected', String(selected));
-    });
-  };
-  for (let row = 1; row <= 10; row += 1) {
-    for (let column = 1; column <= 8; column += 1) {
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.setAttribute('role', 'gridcell');
-      cell.dataset.row = String(row);
-      cell.dataset.column = String(column);
-      cell.setAttribute('aria-label', `${row} rows, ${column} columns`);
-      cell.addEventListener('pointerdown', (event) => event.preventDefault());
-      cell.addEventListener('pointerenter', () => setTablePickerSize(row, column));
-      cell.addEventListener('focus', () => setTablePickerSize(row, column));
-      cell.addEventListener('click', () => {
-        closeInsertMenus();
-        insertTable(row, column);
-      });
-      tablePicker.append(cell);
-    }
-  }
-  tablePicker.addEventListener('pointerleave', () => {
-    setTablePickerSize(0, 0);
-    tableSizeLabel.textContent = 'Choose row and column';
   });
   document.addEventListener('pointerdown', (event) => {
     if (!insertMenus.some(({ button, menu }) => button.contains(event.target) || menu.contains(event.target))) {
@@ -1544,7 +1850,9 @@
       region = document.createElement('div');
       region.className = `document-${name}`;
       region.dataset.documentRegion = name;
+      region.dataset.empty = 'true';
       region.setAttribute('dir', 'ltr');
+      region.setAttribute('contenteditable', 'true');
       region.style.textAlign = alignment;
       const paragraph = document.createElement('p');
       paragraph.append(document.createElement('br'));
@@ -1575,6 +1883,11 @@
     focusDocumentRegion(ensureDocumentRegion('footer'));
     scheduleSave();
   });
+  editor.addEventListener('input', () => {
+    editor.querySelectorAll('[data-document-region]').forEach((region) => {
+      region.dataset.empty = String(!region.textContent.trim());
+    });
+  });
   document.getElementById('image-button').addEventListener('click', () => {
     document.getElementById('image-input').click();
   });
@@ -1593,36 +1906,826 @@
     }
     const reader = new FileReader();
     reader.addEventListener('load', () => {
-      if (typeof reader.result === 'string') insertHtml(`<img src="${reader.result}" alt="Inserted image">`);
+      if (typeof reader.result === 'string') {
+        insertHtml(`<img src="${reader.result}" alt="Inserted image" width="240" data-image-wrap="inline" data-image-align="center" data-pending-image="true">`);
+        activeImage = editor.querySelector('img[data-pending-image="true"]');
+        if (activeImage) activeImage.removeAttribute('data-pending-image');
+        if (activeImage) showImageToolbar(activeImage);
+      }
     });
     reader.addEventListener('error', () => window.alert('Could not read the image.'));
     reader.readAsDataURL(file);
     event.target.value = '';
   });
+  let activeImage = null;
+  let activeTableCell = null;
+  let activeTable = null;
+  let selectedObject = null;
+  const tableToolbar = document.getElementById('table-context-toolbar');
+  const imageToolbar = document.getElementById('image-context-toolbar');
+  const tableManipulators = document.getElementById('table-manipulators');
+  const selectObjectsToggle = document.getElementById('select-objects-toggle');
+  const tableLayoutPanel = document.querySelector('[data-panel="table-layout"]');
+  const tableLayoutTab = document.getElementById('table-layout-tab');
+  const MIN_TABLE_ROW_HEIGHT = 18;
+  const MAX_TABLE_DIMENSION = 20;
+  const MAX_TABLE_CELLS = 400;
+  const positionTableToolbar = (cell) => {
+    const rect = cell.getBoundingClientRect();
+    const workspace = document.querySelector('.document-workspace').getBoundingClientRect();
+    const status = document.querySelector('.status-bar').getBoundingClientRect();
+    const topLimit = Math.max(8, workspace.top + 8);
+    const bottomLimit = Math.max(topLimit + 120, status.top - 8);
+    tableToolbar.style.maxHeight = `${bottomLimit - topLimit}px`;
+    const panelHeight = tableToolbar.offsetHeight;
+    tableToolbar.style.left = 'auto';
+    tableToolbar.style.right = '8px';
+    tableToolbar.style.top = `${Math.max(topLimit, Math.min(rect.top, bottomLimit - panelHeight))}px`;
+  };
+  const positionContextToolbar = (toolbar, anchor) => {
+    const maxLeft = Math.max(8, window.innerWidth - toolbar.offsetWidth - 8);
+    const maxTop = Math.max(8, window.innerHeight - toolbar.offsetHeight - 8);
+    const above = anchor.top - toolbar.offsetHeight - 6;
+    const preferredTop = above >= 8 ? above : anchor.bottom + 6;
+    toolbar.style.left = `${Math.max(8, Math.min(anchor.left, maxLeft))}px`;
+    toolbar.style.top = `${Math.max(8, Math.min(preferredTop, maxTop))}px`;
+  };
+  const updateTableToolbar = (cell) => {
+    activeTableCell = cell;
+    tableToolbar.hidden = !cell;
+    if (!cell) {
+      activeTable = null;
+      document.body.classList.remove('table-tools-open');
+      tableManipulators.replaceChildren();
+      return;
+    }
+    const table = cell.closest('table');
+    activeTable = table;
+    document.body.classList.add('table-tools-open');
+    document.getElementById('table-cell-align').value = cell.style.textAlign || 'right';
+    const savedWidth = table.style.width || table.getAttribute('width') || '';
+    const parsedWidth = Number.parseInt(savedWidth, 10);
+    const availableWidth = Math.max(1,
+      editor.clientWidth - parseFloat(getComputedStyle(editor).paddingLeft) - parseFloat(getComputedStyle(editor).paddingRight));
+    const tableWidth = Number.isFinite(parsedWidth)
+      ? Math.max(10, Math.min(100, parsedWidth))
+      : Math.max(10, Math.min(100, Math.round(table.getBoundingClientRect().width / availableWidth * 100)));
+    document.getElementById('table-width').value = String(tableWidth);
+    document.getElementById('table-width-value').value = `${tableWidth}%`;
+    document.getElementById('table-borders').value = table.dataset.borders || 'all';
+    document.getElementById('table-border-width').value = table.dataset.borderWidth || '1';
+    document.getElementById('table-border-color').value = table.dataset.borderColor || '#aeb6c5';
+    document.getElementById('table-alignment').value = table.dataset.tableAlign || 'left';
+    document.getElementById('table-autofit').value = table.dataset.tableAutofit || 'fixed';
+    document.getElementById('table-repeat-header').checked = table.dataset.repeatHeader === 'true';
+    document.getElementById('table-cell-padding').value = cell.style.paddingTop
+      ? String(Number.parseFloat(cell.style.paddingTop))
+      : '3';
+    document.getElementById('table-cell-padding-value').value = `${document.getElementById('table-cell-padding').value} px`;
+    document.getElementById('table-cell-vertical').value = cell.style.verticalAlign || 'top';
+    positionTableToolbar(cell);
+    refreshTableManipulators(table);
+  };
+  const showImageToolbar = (image) => {
+    if (activeImage && activeImage !== image) activeImage.classList.remove('image-selected');
+    activeImage = image;
+    image.classList.add('image-selected');
+    tableToolbar.hidden = true;
+    activeTable = null;
+    activeTableCell = null;
+    document.body.classList.remove('table-tools-open');
+    tableManipulators.replaceChildren();
+    imageToolbar.hidden = false;
+    const width = Number(image.getAttribute('width')) || Math.round(image.width || 240);
+    const widthInput = document.getElementById('image-width');
+    widthInput.value = String(Math.max(40, Math.min(600, width)));
+    document.getElementById('image-width-value').value = `${width}px`;
+    document.getElementById('image-wrap').value = image.dataset.imageWrap || 'inline';
+    document.getElementById('image-align').value = image.dataset.imageAlign || 'center';
+    const rect = image.getBoundingClientRect();
+    positionContextToolbar(imageToolbar, rect);
+  };
+  editor.addEventListener('click', (event) => {
+    const image = event.target.closest('img');
+    if (document.body.classList.contains('select-objects-mode')) {
+      const target = event.target.closest('table, img, p, h1, h2, h3, li, blockquote, [data-document-region]');
+      if (target && editor.contains(target)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedObject(target);
+        if (target.closest('table')) updateTableToolbar(target.closest('td, th') || target.querySelector('td, th'));
+        else updateTableToolbar(null);
+        if (target.tagName === 'IMG') showImageToolbar(target);
+        return;
+      }
+    }
+    if (image && editor.contains(image)) {
+      showImageToolbar(image);
+      return;
+    }
+    if (activeImage) activeImage.classList.remove('image-selected');
+    activeImage = null;
+    imageToolbar.hidden = true;
+    const cell = event.target.closest('td, th');
+    updateTableToolbar(cell && editor.contains(cell) ? cell : null);
+    if (!cell && !tableLayoutTab.hidden) {
+      tableLayoutTab.hidden = true;
+      if (tableLayoutTab.classList.contains('active')) {
+        document.querySelector('.tab-button[data-tab="home"]').click();
+      }
+    }
+  });
+  editor.addEventListener('dblclick', (event) => {
+    const table = event.target.closest('table');
+    if (!table || !editor.contains(table)) return;
+    const cell = event.target.closest('td, th') || table.querySelector('td, th');
+    if (!cell) return;
+    updateTableToolbar(cell);
+    tableLayoutTab.hidden = false;
+    activateRibbonTab(tableLayoutTab);
+  });
+  editor.addEventListener('pointerover', (event) => {
+    const table = event.target.closest('table');
+    if (!table || !editor.contains(table) || activeTableCell || activeTable) return;
+    activeTable = table;
+    refreshTableManipulators(table);
+  });
+  editor.addEventListener('pointerout', (event) => {
+    const table = event.target.closest('table');
+    if (!table || table.contains(event.relatedTarget) || tableManipulators.contains(event.relatedTarget) || activeTableCell) return;
+    activeTable = null;
+    tableManipulators.replaceChildren();
+  });
+  const setSelectedObject = (element) => {
+    if (selectedObject && selectedObject !== element) selectedObject.classList.remove('selected-object');
+    selectedObject = element;
+    if (selectedObject) selectedObject.classList.add('selected-object');
+    document.getElementById('bring-forward').disabled = !selectedObject;
+    document.getElementById('send-backward').disabled = !selectedObject;
+  };
+  editor.addEventListener('input', () => {
+    if (activeTable && !editor.contains(activeTable)) {
+      activeTable = null;
+      activeTableCell = null;
+      tableToolbar.hidden = true;
+      tableManipulators.replaceChildren();
+      document.body.classList.remove('table-tools-open');
+    }
+    if (selectedObject && !editor.contains(selectedObject)) setSelectedObject(null);
+  });
+  selectObjectsToggle.addEventListener('click', () => {
+    const enabled = !document.body.classList.contains('select-objects-mode');
+    document.body.classList.toggle('select-objects-mode', enabled);
+    selectObjectsToggle.setAttribute('aria-pressed', String(enabled));
+    selectObjectsToggle.classList.toggle('is-active', enabled);
+    selectObjectsToggle.querySelector('span').textContent = enabled ? 'Select objects: ON' : 'Select objects';
+    if (!enabled) setSelectedObject(null);
+  });
+  const changeObjectLayer = (amount) => {
+    if (!selectedObject || !editor.contains(selectedObject)) {
+      setSelectedObject(null);
+      return;
+    }
+    const current = Number(selectedObject.dataset.layer || 0);
+    const next = Math.max(-10, Math.min(10, current + amount));
+    selectedObject.dataset.layer = String(next);
+    selectedObject.style.zIndex = String(next);
+    scheduleSave();
+  };
+  document.getElementById('bring-forward').addEventListener('click', () => changeObjectLayer(1));
+  document.getElementById('send-backward').addEventListener('click', () => changeObjectLayer(-1));
+  const makeTableGrip = (kind, index, className, label) => {
+    const grip = document.createElement('button');
+    grip.type = 'button';
+    grip.className = `table-manipulator ${className}`;
+    grip.dataset.gripKind = kind;
+    grip.dataset.gripIndex = String(index);
+    grip.setAttribute('aria-label', label);
+    if (kind === 'move') grip.textContent = '⠿';
+    return grip;
+  };
+  const refreshTableManipulators = (table) => {
+    if (!table || !editor.contains(table)) {
+      tableManipulators.replaceChildren();
+      return;
+    }
+    const bounds = table.getBoundingClientRect();
+    const grips = [makeTableGrip('move', 0, 'table-move-grip', 'Move table')];
+    grips[0].style.left = `${bounds.left - 20}px`;
+    grips[0].style.top = `${bounds.top - 20}px`;
+
+    const firstRow = table.rows[0];
+    if (firstRow && firstRow.cells.length > 1) {
+      for (let index = 0; index < firstRow.cells.length - 1; index += 1) {
+        const first = firstRow.cells[index].getBoundingClientRect();
+        const second = firstRow.cells[index + 1].getBoundingClientRect();
+        const grip = makeTableGrip('column', index, 'column-grip', `Resize column ${index + 1}`);
+        grip.style.left = `${(first.right + second.left) / 2}px`;
+        grip.style.top = `${bounds.top}px`;
+        grip.style.height = `${bounds.height}px`;
+        grips.push(grip);
+        const addColumn = makeTableGrip('insert-column', index, 'table-insert-grip', `Insert column after column ${index + 1}`);
+        addColumn.textContent = '+';
+        addColumn.style.left = `${(first.right + second.left) / 2}px`;
+        addColumn.style.top = `${bounds.top}px`;
+        addColumn.style.display = 'none';
+        grips.push(addColumn);
+      }
+    }
+    for (let index = 0; index < table.rows.length - 1; index += 1) {
+      const first = table.rows[index].getBoundingClientRect();
+      const second = table.rows[index + 1].getBoundingClientRect();
+      const grip = makeTableGrip('row', index, 'row-grip', `Resize row ${index + 1}`);
+      grip.style.top = `${(first.bottom + second.top) / 2}px`;
+      grip.style.left = `${bounds.left}px`;
+      grip.style.width = `${bounds.width}px`;
+      grips.push(grip);
+      const addRow = makeTableGrip('insert-row', index, 'table-insert-grip', `Insert row below row ${index + 1}`);
+      addRow.textContent = '+';
+      addRow.style.left = `${bounds.left}px`;
+      addRow.style.top = `${(first.bottom + second.top) / 2}px`;
+      addRow.style.display = 'none';
+      grips.push(addRow);
+    }
+    tableManipulators.replaceChildren(...grips);
+    tableManipulators.hidden = false;
+  };
+  tableManipulators.addEventListener('pointermove', (event) => {
+    const grip = event.target.closest('.column-grip, .row-grip');
+    if (!grip) return;
+    const isColumn = grip.classList.contains('column-grip');
+    const addGrip = tableManipulators.querySelector(
+      `[data-grip-kind="${isColumn ? 'insert-column' : 'insert-row'}"][data-grip-index="${grip.dataset.gripIndex}"]`);
+    if (!addGrip || !activeTable) return;
+    tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => {
+      item.style.display = item === addGrip ? 'grid' : 'none';
+    });
+    const bounds = activeTable.getBoundingClientRect();
+    if (isColumn) {
+      addGrip.style.left = `${(grip.getBoundingClientRect().left + grip.getBoundingClientRect().right) / 2}px`;
+      addGrip.style.top = `${Math.max(bounds.top + 9, Math.min(bounds.bottom - 9, event.clientY))}px`;
+    } else {
+      addGrip.style.left = `${Math.max(bounds.left + 9, Math.min(bounds.right - 9, event.clientX))}px`;
+      addGrip.style.top = `${(grip.getBoundingClientRect().top + grip.getBoundingClientRect().bottom) / 2}px`;
+    }
+  });
+  tableManipulators.addEventListener('pointerleave', () => {
+    tableManipulators.querySelectorAll('.table-insert-grip').forEach((grip) => {
+      grip.style.display = 'none';
+    });
+  });
+  let tableDrag = null;
+  tableManipulators.addEventListener('pointerdown', (event) => {
+    const grip = event.target.closest('[data-grip-kind]');
+    if (!grip || !activeTable || !editor.contains(activeTable)) return;
+    event.preventDefault();
+    const kind = grip.dataset.gripKind;
+    if (kind.startsWith('insert-')) return;
+    const index = Number(grip.dataset.gripIndex);
+    const table = activeTable;
+    const rows = Array.from(table.rows);
+    const row = rows[index];
+    const rowBounds = row && row.getBoundingClientRect();
+    let firstColumnWidth = 0;
+    let secondColumnWidth = 0;
+    if (kind === 'column') {
+      const first = rows[0].cells[index].getBoundingClientRect();
+      const second = rows[0].cells[index + 1].getBoundingClientRect();
+      firstColumnWidth = first.width;
+      secondColumnWidth = second.width;
+    }
+    tableDrag = {
+      kind, index, table, startX: event.clientX, startY: event.clientY,
+      rowBounds, firstColumnWidth, secondColumnWidth,
+      rowHeight: rowBounds ? rowBounds.height : 0,
+      nextRowHeight: rows[index + 1] ? rows[index + 1].getBoundingClientRect().height : 0
+    };
+  });
+  document.addEventListener('pointermove', (event) => {
+    if (!tableDrag) return;
+    const { kind, index, table, startX, startY } = tableDrag;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (kind === 'column') {
+      const first = table.rows[0].cells[index];
+      const second = table.rows[0].cells[index + 1];
+      if (!first || !second) return;
+      const firstRect = first.getBoundingClientRect();
+      const secondRect = second.getBoundingClientRect();
+      const leftCellIndex = firstRect.left < secondRect.left ? index : index + 1;
+      const rightCellIndex = leftCellIndex === index ? index + 1 : index;
+      const leftCellWidth = leftCellIndex === index ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
+      const rightCellWidth = rightCellIndex === index ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
+      const delta = Math.max(32 - leftCellWidth, Math.min(leftCellWidth - 32, dx));
+      table.style.tableLayout = 'fixed';
+      Array.from(table.rows).forEach((tableRow) => {
+        const leftCell = tableRow.cells[leftCellIndex];
+        const rightCell = tableRow.cells[rightCellIndex];
+        if (!leftCell || !rightCell) return;
+        leftCell.style.width = `${leftCellWidth + delta}px`;
+        rightCell.style.width = `${rightCellWidth - delta}px`;
+      });
+    } else if (kind === 'row') {
+      const row = table.rows[index];
+      const nextRow = table.rows[index + 1];
+      if (!row || !nextRow) return;
+      const minimumDelta = MIN_TABLE_ROW_HEIGHT - tableDrag.rowHeight;
+      const maximumDelta = tableDrag.nextRowHeight - MIN_TABLE_ROW_HEIGHT;
+      const delta = Math.max(minimumDelta, Math.min(maximumDelta, dy));
+      const rowHeight = tableDrag.rowHeight + delta;
+      const nextRowHeight = tableDrag.nextRowHeight - delta;
+      row.style.height = `${rowHeight}px`;
+      nextRow.style.height = `${nextRowHeight}px`;
+      Array.from(row.cells).forEach((cell) => { cell.style.height = `${rowHeight}px`; });
+      Array.from(nextRow.cells).forEach((cell) => { cell.style.height = `${nextRowHeight}px`; });
+    } else if (kind === 'move') {
+      const pageBounds = editor.getBoundingClientRect();
+      const x = Math.max(pageBounds.left, Math.min(pageBounds.right, event.clientX));
+      const y = Math.max(pageBounds.top, Math.min(pageBounds.bottom, event.clientY));
+      const pointElement = document.elementFromPoint(x, y);
+      const range = document.caretRangeFromPoint
+        ? document.caretRangeFromPoint(x, y)
+        : (() => {
+          const position = document.caretPositionFromPoint && document.caretPositionFromPoint(x, y);
+          if (!position) return null;
+          const caret = document.createRange();
+          caret.setStart(position.offsetNode, position.offset);
+          return caret;
+        })();
+      const target = pointElement && editor.contains(pointElement)
+        ? pointElement
+        : range && (range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? range.startContainer
+        : range.startContainer.parentElement);
+      let reference = target && target.closest('p, h1, h2, h3, ul, ol, blockquote, table');
+      if (reference === table) {
+        const neighbors = Array.from(editor.children).filter((child) =>
+          child !== table && !child.matches('[data-document-region]'));
+        reference = neighbors.find((child) => {
+          const rect = child.getBoundingClientRect();
+          return y < rect.top + rect.height / 2;
+        }) || neighbors[neighbors.length - 1] || null;
+        if (reference) {
+          const rect = reference.getBoundingClientRect();
+          editor.insertBefore(table, y < rect.top + rect.height / 2 ? reference : reference.nextSibling);
+        } else {
+          editor.append(table);
+        }
+      } else if (reference && editor.contains(reference)) {
+        let topLevel = reference;
+        while (topLevel.parentElement && topLevel.parentElement !== editor) topLevel = topLevel.parentElement;
+        const rect = reference.getBoundingClientRect();
+        editor.insertBefore(table, y < rect.top + rect.height / 2 ? topLevel : topLevel.nextSibling);
+      } else if (target === editor || (target && editor.contains(target) && !target.closest('[data-document-region]'))) {
+        let topLevel = target === editor ? null : target;
+        while (topLevel && topLevel.parentElement && topLevel.parentElement !== editor) topLevel = topLevel.parentElement;
+        if (topLevel && topLevel !== table) {
+          const rect = topLevel.getBoundingClientRect();
+          editor.insertBefore(table, y < rect.top + rect.height / 2 ? topLevel : topLevel.nextSibling);
+        } else if (!topLevel) {
+          const nextBlock = Array.from(editor.children).find((child) => {
+            const rect = child.getBoundingClientRect();
+            return rect.top >= y && child !== table;
+          });
+          editor.insertBefore(table, nextBlock || null);
+        }
+      }
+    }
+    refreshTableManipulators(table);
+    positionTableToolbar(activeTableCell || table.querySelector('td, th'));
+  });
+  document.addEventListener('pointerup', () => {
+    if (!tableDrag) return;
+    tableDrag = null;
+    scheduleSave();
+  });
+  window.addEventListener('resize', () => {
+    if (activeTable) refreshTableManipulators(activeTable);
+    if (activeTableCell && !tableToolbar.hidden) positionTableToolbar(activeTableCell);
+  });
+  document.addEventListener('scroll', () => {
+    if (activeTable) refreshTableManipulators(activeTable);
+  }, true);
+  [tableToolbar, imageToolbar, tableLayoutPanel].forEach((toolbar) => {
+    toolbar.addEventListener('pointerdown', (event) => {
+      rememberEditorSelection();
+      if (event.target.closest('button')) event.preventDefault();
+    });
+  });
+  const getActiveTable = () => activeTableCell && activeTableCell.closest('table');
+  const getTableColumnCount = (table) => Array.from(table.rows).reduce((maximum, row) =>
+    Math.max(maximum, Array.from(row.cells).reduce((total, cell) => total + cell.colSpan, 0)), 0);
+  const canExpandTable = (table, addRows, addColumns) => {
+    const rows = table.rows.length + addRows;
+    const columns = getTableColumnCount(table) + addColumns;
+    if (rows > MAX_TABLE_DIMENSION || columns > MAX_TABLE_DIMENSION || rows * columns > MAX_TABLE_CELLS) {
+      showToast(`Tables are limited to ${MAX_TABLE_DIMENSION} rows or columns and ${MAX_TABLE_CELLS} cells.`);
+      return false;
+    }
+    return true;
+  };
+  const insertTableColumn = (table, index, position = 'right') => {
+    const columns = getTableColumnCount(table) + 1;
+    Array.from(table.rows).forEach((row) => {
+      const reference = row.cells[index];
+      const newCell = createTableCell(reference ? reference.tagName.toLowerCase() : 'td');
+      row.insertBefore(newCell, position === 'left' ? reference : reference && reference.nextSibling);
+      Array.from(row.cells).forEach((cell) => {
+        cell.style.width = `${100 / columns}%`;
+      });
+    });
+    table.style.width = '100%';
+    table.style.maxWidth = '100%';
+    table.style.tableLayout = 'fixed';
+    table.setAttribute('width', '100%');
+  };
+  const createTableCell = (tagName) => {
+    const cell = document.createElement(tagName);
+    cell.append(document.createElement('br'));
+    return cell;
+  };
+  const createMatchingEmptyCell = (source) => {
+    const cell = source ? source.cloneNode(false) : createTableCell('td');
+    cell.rowSpan = 1;
+    cell.colSpan = 1;
+    cell.append(document.createElement('br'));
+    return cell;
+  };
+  const focusTableCell = (cell) => {
+    if (!cell) return;
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    savedEditorRange = range.cloneRange();
+    updateTableToolbar(cell);
+  };
+  tableManipulators.addEventListener('click', (event) => {
+    const grip = event.target.closest('[data-grip-kind^="insert-"]');
+    if (!grip || !activeTable || !editor.contains(activeTable)) return;
+    const table = activeTable;
+    const index = Number(grip.dataset.gripIndex);
+    if (grip.dataset.gripKind === 'insert-row') {
+      if (!canExpandTable(table, 1, 0)) return;
+      const sourceRow = table.rows[index];
+      if (!sourceRow) return;
+      const newRow = sourceRow.cloneNode(false);
+      Array.from(sourceRow.cells).forEach((sourceCell) => {
+        newRow.append(createMatchingEmptyCell(sourceCell));
+      });
+      sourceRow.parentElement.insertBefore(newRow, sourceRow.nextSibling);
+      focusTableCell(newRow.cells[0]);
+    } else {
+      if (!canExpandTable(table, 0, 1)) return;
+      insertTableColumn(table, index);
+      focusTableCell(table.rows[0].cells[index + 1]);
+    }
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertTable' }));
+    scheduleSave();
+    updateCounts();
+  });
+  const cellFromNode = (node) => {
+    const element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+    return element && element.closest('td, th');
+  };
+  const getSelectedTableCells = (table) => {
+    const selection = window.getSelection();
+    const startCell = selection && cellFromNode(selection.anchorNode);
+    const endCell = selection && cellFromNode(selection.focusNode);
+    if (!startCell || !endCell || startCell.closest('table') !== table || endCell.closest('table') !== table) return [];
+    const minRow = Math.min(startCell.parentElement.rowIndex, endCell.parentElement.rowIndex);
+    const maxRow = Math.max(startCell.parentElement.rowIndex, endCell.parentElement.rowIndex);
+    const minColumn = Math.min(startCell.cellIndex, endCell.cellIndex);
+    const maxColumn = Math.max(startCell.cellIndex, endCell.cellIndex);
+    const cells = [];
+    for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
+      const row = table.rows[rowIndex];
+      if (!row || row.cells.length <= maxColumn) return [];
+      for (let columnIndex = minColumn; columnIndex <= maxColumn; columnIndex += 1) {
+        const cell = row.cells[columnIndex];
+        if (cell.colSpan !== 1 || cell.rowSpan !== 1) return [];
+        cells.push(cell);
+      }
+    }
+    return cells;
+  };
+  const replaceTableCellTag = (cell, tagName) => {
+    const replacement = document.createElement(tagName);
+    Array.from(cell.attributes).forEach(({ name, value }) => replacement.setAttribute(name, value));
+    while (cell.firstChild) replacement.append(cell.firstChild);
+    cell.replaceWith(replacement);
+    return replacement;
+  };
+  const setRepeatedHeaderRow = (table, enabled) => {
+    if (enabled && !table.tHead && table.rows.length) {
+      const firstRow = table.rows[0];
+      const rowIndex = firstRow.rowIndex;
+      const header = document.createElement('thead');
+      Array.from(firstRow.cells).forEach((cell) => replaceTableCellTag(cell, 'th'));
+      header.append(firstRow);
+      table.insertBefore(header, table.firstChild);
+      table.dataset.repeatHeader = 'true';
+      return table.rows[rowIndex].cells[0];
+    }
+    if (!enabled && table.tHead) {
+      const header = table.tHead;
+      const rows = Array.from(header.rows);
+      const body = table.tBodies[0] || table.createTBody();
+      rows.forEach((row) => {
+        Array.from(row.cells).forEach((cell) => replaceTableCellTag(cell, 'td'));
+        body.insertBefore(row, body.firstChild);
+      });
+      header.remove();
+      delete table.dataset.repeatHeader;
+      return table.rows[0] && table.rows[0].cells[0];
+    }
+    return table.rows[0] && table.rows[0].cells[0];
+  };
+  tableLayoutPanel.querySelectorAll('[data-table-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!activeTableCell || !editor.contains(activeTableCell)) return;
+      const table = getActiveTable();
+      const row = activeTableCell.parentElement;
+      const columnIndex = activeTableCell.cellIndex;
+      const action = button.dataset.tableAction;
+      if (action === 'row-above' || action === 'row-below') {
+        if (!canExpandTable(table, 1, 0)) return;
+        const newRow = document.createElement('tr');
+        Array.from(row.cells).forEach((cell) => newRow.append(createTableCell(cell.tagName.toLowerCase())));
+        row.parentElement.insertBefore(newRow, action === 'row-above' ? row : row.nextSibling);
+        updateTableToolbar(newRow.cells[columnIndex]);
+      } else if (action === 'column-left' || action === 'column-right') {
+        if (!canExpandTable(table, 0, 1)) return;
+        insertTableColumn(table, columnIndex, action === 'column-left' ? 'left' : 'right');
+        updateTableToolbar(table.rows[row.rowIndex].cells[columnIndex + (action === 'column-right' ? 1 : 0)]);
+      } else if (action === 'delete-row') {
+        const next = row.nextElementSibling || row.previousElementSibling;
+        if (table.rows.length <= 1) table.remove();
+        else row.remove();
+        updateTableToolbar(next ? next.cells[Math.min(columnIndex, next.cells.length - 1)] : null);
+      } else if (action === 'delete-column') {
+        if (row.cells.length <= 1) table.remove();
+        else Array.from(table.rows).forEach((tableRow) => tableRow.cells[columnIndex]?.remove());
+        updateTableToolbar(editor.contains(table) ? table.rows[Math.min(row.rowIndex, table.rows.length - 1)].cells[Math.min(columnIndex, table.rows[0].cells.length - 1)] : null);
+      } else if (action === 'merge-cells') {
+        const cells = getSelectedTableCells(table);
+        if (cells.length < 2) {
+          showToast('Select two or more adjacent cells in the same table first.');
+          return;
+        }
+        const startRow = Math.min(...cells.map((cell) => cell.parentElement.rowIndex));
+        const startColumn = Math.min(...cells.map((cell) => cell.cellIndex));
+        const endRow = Math.max(...cells.map((cell) => cell.parentElement.rowIndex));
+        const endColumn = Math.max(...cells.map((cell) => cell.cellIndex));
+        const firstCell = table.rows[startRow].cells[startColumn];
+        cells.slice(1).forEach((cell) => {
+          if (cell.textContent.trim()) {
+            firstCell.append(document.createElement('br'));
+            while (cell.firstChild) firstCell.append(cell.firstChild);
+          }
+          cell.remove();
+        });
+        firstCell.colSpan = endColumn - startColumn + 1;
+        firstCell.rowSpan = endRow - startRow + 1;
+        updateTableToolbar(firstCell);
+      } else if (action === 'split-cell') {
+        const cell = activeTableCell;
+        if (cell.colSpan === 1 && cell.rowSpan === 1) {
+          showToast('Select a merged cell to split it.');
+          return;
+        }
+        const columnSpan = cell.colSpan;
+        const rowSpan = cell.rowSpan;
+        cell.colSpan = 1;
+        cell.rowSpan = 1;
+        for (let offset = 1; offset < columnSpan; offset += 1) {
+          cell.parentElement.insertBefore(createTableCell(cell.tagName.toLowerCase()), cell.nextSibling);
+        }
+        for (let offset = 1; offset < rowSpan; offset += 1) {
+          const row = table.rows[cell.parentElement.rowIndex + offset];
+          if (!row) continue;
+          for (let column = 0; column < columnSpan; column += 1) {
+            row.insertBefore(createTableCell(cell.tagName.toLowerCase()), row.cells[cell.cellIndex + column] || null);
+          }
+        }
+        updateTableToolbar(cell);
+      } else if (action === 'distribute-columns') {
+        const columnCount = table.rows[0] && table.rows[0].cells.length;
+        if (columnCount) {
+          table.style.tableLayout = 'fixed';
+          Array.from(table.rows).forEach((tableRow) => Array.from(tableRow.cells).forEach((cell) => {
+            cell.style.width = `${100 / columnCount}%`;
+          }));
+        }
+      } else if (action === 'distribute-rows') {
+        const rowHeight = table.getBoundingClientRect().height / Math.max(1, table.rows.length);
+        Array.from(table.rows).forEach((tableRow) => {
+          tableRow.style.height = `${rowHeight}px`;
+        });
+      } else if (action === 'shade-cell') {
+        activeTableCell.style.backgroundColor = document.getElementById('table-cell-color').value;
+      } else if (action === 'delete-table') {
+        table.remove();
+        updateTableToolbar(null);
+      } else if (action === 'fit-text') {
+        Array.from(table.rows).forEach((tableRow) => Array.from(tableRow.cells).forEach((cell) => {
+          cell.style.whiteSpace = 'pre-wrap';
+          cell.style.overflowWrap = 'anywhere';
+        }));
+      }
+      scheduleSave();
+      updateCounts();
+    });
+  });
+  document.getElementById('table-borders').addEventListener('change', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    table.dataset.borders = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('table-alignment').addEventListener('change', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    table.dataset.tableAlign = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('table-autofit').addEventListener('change', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    const mode = event.currentTarget.value;
+    table.dataset.tableAutofit = mode;
+    if (mode === 'window') {
+      table.style.width = '100%';
+      table.style.tableLayout = 'auto';
+      table.setAttribute('width', '100%');
+    } else if (mode === 'contents') {
+      table.style.width = 'auto';
+      table.style.tableLayout = 'auto';
+      table.removeAttribute('width');
+    } else {
+      table.style.width = table.getAttribute('width') || '100%';
+      table.style.tableLayout = 'fixed';
+    }
+    scheduleSave();
+    refreshTableManipulators(table);
+  });
+  document.getElementById('table-repeat-header').addEventListener('change', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    const cell = setRepeatedHeaderRow(table, event.currentTarget.checked);
+    updateTableToolbar(cell);
+    scheduleSave();
+  });
+  document.getElementById('table-cell-padding').addEventListener('input', (event) => {
+    if (!activeTableCell || !editor.contains(activeTableCell)) return;
+    const padding = Math.max(0, Math.min(24, Number(event.currentTarget.value) || 0));
+    activeTableCell.style.padding = `${padding}px`;
+    document.getElementById('table-cell-padding-value').value = `${padding} px`;
+    scheduleSave();
+  });
+  document.getElementById('table-cell-vertical').addEventListener('change', (event) => {
+    if (!activeTableCell || !editor.contains(activeTableCell)) return;
+    activeTableCell.style.verticalAlign = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('table-cell-align').addEventListener('change', (event) => {
+    if (!activeTableCell || !editor.contains(activeTableCell)) return;
+    activeTableCell.style.textAlign = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('table-width').addEventListener('input', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    table.setAttribute('width', `${event.currentTarget.value}%`);
+    table.style.width = `${event.currentTarget.value}%`;
+    document.getElementById('table-width-value').value = `${event.currentTarget.value}%`;
+    scheduleSave();
+  });
+  document.getElementById('table-border-width').addEventListener('input', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    const width = Math.max(0, Math.min(8, Number(event.currentTarget.value) || 0));
+    event.currentTarget.value = String(width);
+    table.dataset.borderWidth = String(width);
+    table.style.setProperty('--table-border-width', `${width}px`);
+    scheduleSave();
+  });
+  document.getElementById('table-border-color').addEventListener('input', (event) => {
+    const table = getActiveTable();
+    if (!table) return;
+    table.dataset.borderColor = event.currentTarget.value;
+    table.style.setProperty('--table-border-color', event.currentTarget.value);
+    scheduleSave();
+  });
+  document.getElementById('image-width').addEventListener('input', (event) => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    activeImage.setAttribute('width', event.currentTarget.value);
+    document.getElementById('image-width-value').value = `${event.currentTarget.value}px`;
+    scheduleSave();
+  });
+  document.getElementById('image-wrap').addEventListener('change', (event) => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    activeImage.dataset.imageWrap = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('image-align').addEventListener('change', (event) => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    activeImage.dataset.imageAlign = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('image-delete').addEventListener('click', () => {
+    if (activeImage && editor.contains(activeImage)) activeImage.remove();
+    activeImage = null;
+    imageToolbar.hidden = true;
+    scheduleSave();
+    updateCounts();
+  });
+  const previewDialog = document.getElementById('document-preview');
+  const previewPages = document.getElementById('preview-pages');
+  function openDocumentPreview() {
+    const preview = editor.cloneNode(true);
+    preview.removeAttribute('id');
+    preview.removeAttribute('contenteditable');
+    preview.setAttribute('aria-label', 'Print preview document');
+    previewPages.replaceChildren(preview);
+    previewDialog.showModal();
+  }
+  document.getElementById('preview-close').addEventListener('click', () => previewDialog.close());
+  document.getElementById('preview-print').addEventListener('click', () => {
+    previewDialog.close();
+    window.setTimeout(() => window.print(), 100);
+  });
+  document.getElementById('focus-toggle').addEventListener('click', openDocumentPreview);
+  document.getElementById('view-focus-toggle').addEventListener('click', openDocumentPreview);
   document.getElementById('print-button').addEventListener('click', () => window.print());
+  const romanUrduLetters = Object.freeze({
+    ا: 'a', آ: 'aa', ب: 'b', پ: 'p', ت: 't', ٹ: 'ṭ', ث: 's', ج: 'j', چ: 'ch',
+    ح: 'ḥ', خ: 'kh', د: 'd', ڈ: 'ḍ', ذ: 'z', ر: 'r', ڑ: 'ṛ', ز: 'z', ژ: 'zh',
+    س: 's', ش: 'sh', ص: 's', ض: 'z', ط: 't', ظ: 'z', ع: "'", غ: 'gh', ف: 'f',
+    ق: 'q', ک: 'k', گ: 'g', ل: 'l', م: 'm', ن: 'n', ں: 'n', و: 'o', ہ: 'h',
+    ھ: 'h', ء: "'", ی: 'i', ے: 'e', ئ: 'e', ؤ: 'o', ۓ: 'e', '،': ',', '۔': '.',
+    '؟': '?', '؛': ';', 'َ': 'a', 'ِ': 'i', 'ُ': 'u', 'ٰ': 'a', 'ّ': ''
+  });
+  const romanUrduWords = Object.freeze({
+    پاکستان: 'Pakistan', اردو: 'Urdu', انگریزی: 'English', 'السلام علیکم': 'Assalamu alaikum',
+    شکریہ: 'shukriya', محبت: 'mohabbat', دوست: 'dost', سلام: 'salaam', پانی: 'pani',
+    میں: 'main', آپ: 'aap', میرا: 'mera', میری: 'meri', کتاب: 'kitaab', ہے: 'hai',
+    ہیں: 'hain', کرنا: 'karna', کیا: 'kya', اور: 'aur', کے: 'ke', کی: 'ki', کا: 'ka',
+    نہیں: 'nahin', کرتا: 'karta', کرتی: 'karti', وقت: 'waqt', دنیا: 'dunya', اچھا: 'achha'
+  });
+  const transliterateUrdu = (text) => text.replace(/السلام\s+علیکم/gu, 'Assalamu alaikum')
+    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/gu,
+    (word) => romanUrduWords[word] || Array.from(word, (character) =>
+      romanUrduLetters[character] ?? character).join(''));
+  document.getElementById('convert-urdu-button').addEventListener('click', () => {
+    focusEditor();
+    const selection = window.getSelection();
+    const selectedRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (selectedRange && !selectedRange.collapsed && editor.contains(selectedRange.commonAncestorContainer)) {
+      const converted = transliterateUrdu(selectedRange.toString());
+      const span = document.createElement('span');
+      span.dir = 'ltr';
+      span.lang = 'en';
+      span.textContent = converted;
+      selectedRange.deleteContents();
+      selectedRange.insertNode(span);
+      selectedRange.setStartAfter(span);
+      selectedRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(selectedRange);
+    } else {
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => node.parentElement.closest('[contenteditable="false"], img') ||
+          !/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/u.test(node.textContent)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT
+      });
+      const textNodes = [];
+      while (walker.nextNode()) textNodes.push(walker.currentNode);
+      textNodes.forEach((node) => {
+        const span = document.createElement('span');
+        span.dir = 'ltr';
+        span.lang = 'en';
+        span.textContent = transliterateUrdu(node.textContent);
+        node.replaceWith(span);
+      });
+    }
+    updateCounts();
+    scheduleSave();
+    showToast('Urdu text converted to Roman Urdu.');
+  });
   document.getElementById('theme-toggle').addEventListener('click', (event) => {
     const active = document.body.classList.toggle('dark-mode');
     event.currentTarget.setAttribute('aria-pressed', String(active));
     event.currentTarget.querySelector('span:last-child').textContent = active ? 'Light mode' : 'Dark mode';
   });
-  const focusToggle = document.getElementById('focus-toggle');
-  const setFocusMode = (active) => {
-    document.body.classList.toggle('focus-mode', active);
-    focusToggle.innerHTML = active ? '⛶ <span>Exit focus</span>' : '⛶ <span>Focus</span>';
-    focusToggle.setAttribute('aria-pressed', String(active));
-    document.getElementById('view-focus-toggle').setAttribute('aria-pressed', String(active));
-  };
-  focusToggle.addEventListener('click', () => setFocusMode(!document.body.classList.contains('focus-mode')));
-  document.getElementById('view-focus-toggle').addEventListener('click', () => setFocusMode(!document.body.classList.contains('focus-mode')));
-  document.getElementById('focus-exit-button').addEventListener('click', () => setFocusMode(false));
   document.getElementById('view-ruler-toggle').addEventListener('click', (event) => {
     const visible = document.body.classList.toggle('hide-rulers') === false;
     event.currentTarget.setAttribute('aria-pressed', String(visible));
     event.currentTarget.querySelector('span:last-child').textContent = visible ? 'Ruler' : 'Show ruler';
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && document.body.classList.contains('focus-mode') &&
-      !document.getElementById('find-panel') && !document.querySelector('dialog[open]')) setFocusMode(false);
   });
   [
     { id: 'header-toggle', className: 'header-collapsed', name: 'top bar' },
@@ -1640,7 +2743,9 @@
     urduTyping = !urduTyping;
     event.currentTarget.classList.toggle('active', urduTyping);
     event.currentTarget.setAttribute('aria-pressed', String(urduTyping));
-    event.currentTarget.querySelector('strong').textContent = urduTyping ? 'ON' : 'OFF';
+    event.currentTarget.querySelector('span:last-child').childNodes[0].textContent = urduTyping ? ' Urdu ' : ' English ';
+    event.currentTarget.querySelector('strong').textContent = 'ON';
+    event.currentTarget.setAttribute('aria-label', `Toggle Urdu keyboard mapping; ${urduTyping ? 'Urdu' : 'English'} typing is on`);
     event.currentTarget.title = urduTyping ? 'Urdu keyboard mapping is on' : 'English typing is on';
     document.getElementById('typing-status').textContent = urduTyping ? 'Urdu keyboard' : 'English';
   });
@@ -1650,17 +2755,18 @@
   document.getElementById('help-shortcuts-button').addEventListener('click', () => {
     document.getElementById('shortcuts-dialog').showModal();
   });
-  document.querySelectorAll('.tab-button').forEach((button) => {
-    button.addEventListener('click', () => {
-      const homeSelected = button.dataset.tab === 'home';
-      document.body.classList.toggle('home-ribbon-active', homeSelected);
-      document.querySelector('.ribbon-shell').classList.toggle('home-ribbon', homeSelected);
-      closeLayoutMenus();
-      document.querySelectorAll('.tab-button').forEach((tab) => tab.classList.toggle('active', tab === button));
-      document.querySelectorAll('.ribbon-panel').forEach((panel) => {
-        panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab);
-      });
+  const activateRibbonTab = (button) => {
+    const homeSelected = button.dataset.tab === 'home';
+    document.body.classList.toggle('home-ribbon-active', homeSelected);
+    document.querySelector('.ribbon-shell').classList.toggle('home-ribbon', homeSelected);
+    closeLayoutMenus();
+    document.querySelectorAll('.tab-button').forEach((tab) => tab.classList.toggle('active', tab === button));
+    document.querySelectorAll('.ribbon-panel').forEach((panel) => {
+      panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab);
     });
+  };
+  document.querySelectorAll('.tab-button').forEach((button) => {
+    button.addEventListener('click', () => activateRibbonTab(button));
   });
   const layoutMenus = Array.from(document.querySelectorAll('.layout-menu-trigger')).map((button) => ({
     button,
@@ -1744,6 +2850,10 @@
   const applyMargins = (values) => {
     const [top, bottom, left, right] = values;
     editor.style.padding = `${top * 96}px ${right * 96}px ${bottom * 96}px ${left * 96}px`;
+    editor.style.setProperty('--document-margin-top', `${top * 96}px`);
+    editor.style.setProperty('--document-margin-bottom', `${bottom * 96}px`);
+    editor.style.setProperty('--document-margin-left', `${left * 96}px`);
+    editor.style.setProperty('--document-margin-right', `${right * 96}px`);
     marginFields.forEach((field, index) => { field.value = String(values[index]); });
     syncRulers();
   };

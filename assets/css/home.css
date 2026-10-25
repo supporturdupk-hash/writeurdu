@@ -162,6 +162,19 @@ a { color: inherit; text-decoration: none; }
 .guide-example > div { padding: 14px; border: 1px solid #e6e9ef; border-radius: 7px; background: #fafbfc; }
 .guide-example small { display: block; margin-bottom: 7px; color: #778195; font: 11px 'DM Sans', Arial, sans-serif; }
 .guide-example p { margin: 0; }
+.guide-keyboard { margin: 18px 0 22px; padding: 16px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fafbfe; }
+.guide-keyboard h3 { margin-top: 0; }
+.guide-keyboard > label { display: block; margin-bottom: 6px; color: #566177; font-size: 12px; }
+#keyboard-test { width: 100%; min-height: 48px; padding: 7px 12px; border: 1px solid #cdd5e5; border-radius: 6px; outline: none; background: #fff; font: 20px/1.7 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', serif; }
+#keyboard-test:focus { border-color: #7185cb; box-shadow: 0 0 0 3px #7185cb24; }
+.guide-keyboard > p { margin: 7px 0; color: #778195; font-size: 11px; }
+.keyboard-preview { min-height: 43px; margin: 8px 0 13px; padding: 7px 10px; border-radius: 5px; background: #eef3ff; color: #3453bd; text-align: right; font: 20px/1.5 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', serif; }
+.keyboard-layout { display: grid; gap: 5px; }
+.keyboard-map-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.keyboard-map-key { min-width: 0; min-height: 42px; display: flex; align-items: stretch; justify-content: space-between; overflow: hidden; padding: 0; border: 1px solid #dce2ec; border-radius: 5px; background: #fff; }
+.keyboard-map-key:hover, .keyboard-map-key:focus-visible { border-color: #7185cb; outline: 2px solid #7185cb55; }
+.keyboard-map-physical { min-width: 45%; display: grid; place-items: center; padding: 3px; background: #edf7eb; color: #34404d; font: 11px/1.2 'DM Sans', Arial, sans-serif; }
+.keyboard-map-urdu { min-width: 45%; display: grid; place-items: center; padding: 2px; background: #4169e1; color: #fff; font: 21px/1.3 'Noto Nastaliq Urdu', 'Noto Naskh Arabic', serif; }
 .home-toast { position: fixed; z-index: 5; right: 50%; bottom: 25px; max-width: calc(100vw - 30px); padding: 10px 16px; transform: translateX(50%); border-radius: 6px; background: #283247; color: white; opacity: 0; pointer-events: none; transition: opacity .2s; font: 12px 'DM Sans', Arial, sans-serif; }
 .home-toast.visible { opacity: 1; }
 
@@ -257,4 +270,6 @@ a { color: inherit; text-decoration: none; }
   .feedback-form { padding: 19px; }
   .guide-promo { align-items: flex-start; flex-direction: column; padding: 19px; }
   .guide-example { grid-template-columns: 1fr; }
+  .guide-keyboard { padding: 10px; }
+  .keyboard-map-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

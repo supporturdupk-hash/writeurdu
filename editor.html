@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Amiri:wght@400;700&family=Cairo:wght@400;500;600;700&family=Changa:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=El+Messiri:wght@400;500;600;700&family=Gulzar&family=Harmattan:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Lateef:wght@400;500;600;700&family=Lemonada:wght@400;500;600;700&family=Markazi+Text:wght@400;500;600;700&family=Mada:wght@400;500;600;700&family=Mirza:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&family=Tajawal:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/editor.css">
+  <script src="assets/js/urdu-keyboard.js" defer></script>
   <script src="assets/js/editor.js" defer></script>
 </head>
 <body class="home-ribbon-active">
@@ -38,13 +39,14 @@
     <button class="tab-button" type="button" data-tab="layout">Layout</button>
     <button class="tab-button" type="button" data-tab="view">View</button>
     <button class="tab-button" type="button" data-tab="help">Help</button>
+    <button id="table-layout-tab" class="tab-button" type="button" data-tab="table-layout" hidden>Table Layout</button>
     <span class="tab-spacer"></span>
     <div class="tab-actions">
       <button id="typing-help-button" class="help-button" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
       <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu keyboard mapping" aria-pressed="true" title="Toggle Urdu keyboard mapping">
         <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
       </button>
-      <button id="focus-toggle" class="header-button focus-action" type="button" aria-pressed="false">⛶ <span>Focus</span></button>
+      <button id="focus-toggle" class="header-button focus-action" type="button" aria-haspopup="dialog">▣ <span>Preview</span></button>
       <button id="header-toggle" class="bar-toggle header-toggle" type="button" aria-label="Hide top bar" aria-expanded="true" title="Hide top bar">
         <img src="assets/Media/down-arrow-5-svgrepo-com.svg" alt="">
       </button>
@@ -140,20 +142,38 @@
         </div>
       </div>
       <div class="ribbon-group editing-group"><button class="ribbon-action" id="find-button" type="button">⌕ <span>Find</span></button><button class="ribbon-action" id="replace-button" type="button">⇄ <span>Replace</span></button><span class="group-caption">Editing</span></div>
+      <div class="ribbon-group arrange-group" aria-label="Selection and arrange">
+        <button class="ribbon-action" id="select-objects-toggle" type="button" aria-pressed="false" title="Select text, tables, and pictures as objects">▱ <span>Select objects</span></button>
+        <button class="ribbon-action" id="bring-forward" type="button" disabled title="Bring selected object forward">↑ <span>Bring forward</span></button>
+        <button class="ribbon-action" id="send-backward" type="button" disabled title="Send selected object backward">↓ <span>Send backward</span></button>
+        <span class="group-caption">Arrange</span>
+      </div>
     </div>
 
     <div class="ribbon-panel" data-panel="insert">
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
         <button class="insert-action" id="table-button" type="button" aria-expanded="false" aria-controls="table-menu"><img src="assets/Media/table-alt-svgrepo-com.svg" alt=""><span>Table</span></button>
         <div id="table-menu" class="insert-menu table-menu" role="dialog" aria-label="Insert Table" hidden>
-          <strong>Insert Table</strong>
-          <div class="table-picker-grid" role="grid" aria-label="Choose rows and columns"></div>
-          <output id="table-size-label">Choose row and column</output>
+          <strong id="table-picker-label" aria-live="polite">Insert Table</strong>
+          <div id="table-picker-grid" class="table-picker-grid" role="grid" aria-label="Choose table size"></div>
+          <div class="table-picker-footer">
+            <button id="table-custom-toggle" type="button" aria-expanded="false" aria-controls="table-create-fields">▦ <span>Choose row and column</span></button>
+          </div>
+          <div id="table-create-fields" class="table-create-fields" hidden>
+            <label>Rows <input id="table-create-rows" type="number" min="1" max="20" value="3"></label>
+            <label>Columns <input id="table-create-columns" type="number" min="1" max="20" value="3"></label>
+            <label>Cell width <input id="table-create-width" type="number" min="40" max="240" step="10" value="120"> px</label>
+            <label>Cell height <input id="table-create-height" type="number" min="28" max="120" step="4" value="56"> px</label>
+            <button id="table-create-button" class="table-create-button" type="button">Insert table</button>
+          </div>
         </div>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group">
         <button class="insert-action" id="image-button" type="button"><img src="assets/Media/picture-svgrepo-com.svg" alt=""><span>Picture</span></button>
         <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      </div>
+      <div class="ribbon-group insert-group insert-ribbon-group">
+        <button class="insert-action" id="convert-urdu-button" type="button" title="Convert selected Urdu text, or the whole document, to Roman Urdu"><span class="insert-glyph">↔</span><span>Urdu → English</span></button>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
         <button class="insert-action" id="page-number-button" type="button" aria-expanded="false" aria-controls="page-number-menu"><img src="assets/Media/page-number-svgrepo-com.svg" alt=""><span>Page Number</span></button>
@@ -256,8 +276,8 @@
 
     <div class="ribbon-panel" data-panel="view">
       <div class="ribbon-group view-ribbon-group">
-        <button id="view-focus-toggle" class="view-action" type="button" aria-pressed="false"><span class="view-glyph">⛶</span><span>Focus</span></button>
-        <span class="group-caption">Focus</span>
+        <button id="view-focus-toggle" class="view-action" type="button" aria-haspopup="dialog"><span class="view-glyph">▣</span><span>Preview</span></button>
+        <span class="group-caption">Preview</span>
       </div>
       <div class="ribbon-group view-ribbon-group">
         <button id="view-ruler-toggle" class="view-action" type="button" aria-pressed="true"><span class="view-glyph">▤</span><span>Ruler</span></button>
@@ -290,6 +310,31 @@
       <div class="ribbon-group help-ribbon-group">
         <button id="help-shortcuts-button" class="help-ribbon-action" type="button"><span class="help-ribbon-glyph">⌨</span><span>Keyboard shortcuts</span></button>
         <span class="group-caption">Reference</span>
+      </div>
+    </div>
+
+    <div class="ribbon-panel" data-panel="table-layout">
+      <div class="ribbon-group table-layout-group" aria-label="Insert table rows and columns">
+        <button type="button" class="table-layout-action" data-table-action="row-above">＋ Row above</button>
+        <button type="button" class="table-layout-action" data-table-action="row-below">＋ Row below</button>
+        <button type="button" class="table-layout-action" data-table-action="column-left">＋ Column left</button>
+        <button type="button" class="table-layout-action" data-table-action="column-right">＋ Column right</button>
+        <span class="group-caption">Insert</span>
+      </div>
+      <div class="ribbon-group table-layout-group" aria-label="Delete table rows and columns">
+        <button type="button" class="table-layout-action" data-table-action="delete-row">Delete row</button>
+        <button type="button" class="table-layout-action" data-table-action="delete-column">Delete column</button>
+        <button type="button" class="table-layout-action" data-table-action="delete-table">Delete table</button>
+        <span class="group-caption">Delete</span>
+      </div>
+      <div class="ribbon-group table-layout-group" aria-label="Merge table cells">
+        <button type="button" class="table-layout-action" data-table-action="merge-cells">Merge cells</button>
+        <button type="button" class="table-layout-action" data-table-action="split-cell">Split cell</button>
+        <span class="group-caption">Merge</span>
+      </div>
+      <div class="ribbon-group table-layout-group" aria-label="Adjust table text">
+        <button type="button" class="table-layout-action" data-table-action="fit-text">Fit text to cells</button>
+        <span class="group-caption">Cell size</span>
       </div>
     </div>
   </section>
@@ -369,7 +414,7 @@
       </div>
       <div class="document-stage">
         <div class="page-frame">
-          <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
+          <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" aria-autocomplete="list" aria-controls="word-suggestions" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
           <div class="vertical-ruler" aria-label="Vertical page ruler">
             <div class="vertical-ruler-track" id="vertical-ruler">
               <div class="vertical-ruler-scale" aria-hidden="true"></div>
@@ -382,11 +427,75 @@
     </div>
     <aside class="ads-sidebar" aria-label="Advertisement space"></aside>
   </main>
+  <div id="word-suggestions" class="word-suggestions" role="listbox" aria-label="Urdu word suggestions" hidden></div>
 
   <footer class="status-bar" dir="ltr">
     <div class="status-left"><span>Page <b id="page-number">1</b> of <b id="page-total">1</b></span><span id="word-count">0 words</span><span id="character-count">0 characters</span><span id="language-status">Urdu (Pakistan)</span></div>
     <div class="status-right"><span>Editor: <b id="typing-status">Urdu keyboard</b></span><button id="status-zoom-out" type="button">−</button><input id="status-zoom-range" type="range" min="70" max="130" value="100" aria-label="Zoom"><button id="status-zoom-in" type="button">+</button><span id="status-zoom-label">100%</span><button class="status-fit" type="button">Fit</button></div>
   </footer>
+  <dialog id="document-preview" class="document-preview" aria-labelledby="preview-title">
+    <header class="preview-header">
+      <h2 id="preview-title">Print preview</h2>
+      <div><button id="preview-print" type="button">Print</button><button id="preview-close" type="button">Back to editor</button></div>
+    </header>
+    <div id="preview-pages" class="preview-pages"></div>
+  </dialog>
+  <div id="table-context-toolbar" class="context-toolbar table-context-toolbar" role="toolbar" aria-label="Table formatting" hidden>
+    <strong>Table</strong>
+    <button type="button" data-table-action="row-above">Row above</button>
+    <button type="button" data-table-action="row-below">Row below</button>
+    <button type="button" data-table-action="column-left">Column left</button>
+    <button type="button" data-table-action="column-right">Column right</button>
+    <button type="button" data-table-action="delete-row">Delete row</button>
+    <button type="button" data-table-action="delete-column">Delete column</button>
+    <button type="button" data-table-action="merge-cells">Merge selected cells</button>
+    <button type="button" data-table-action="split-cell">Split selected cell</button>
+    <button type="button" data-table-action="distribute-columns">Distribute columns</button>
+    <button type="button" data-table-action="distribute-rows">Distribute rows</button>
+    <label>Cell color <input id="table-cell-color" type="color" value="#fff2cc"></label>
+    <button type="button" data-table-action="shade-cell">Apply</button>
+    <label>Border color <input id="table-border-color" type="color" value="#aeb6c5"></label>
+    <label>Border width <input id="table-border-width" type="number" min="0" max="8" step="1" value="1"> px</label>
+    <label>Cell padding <input id="table-cell-padding" type="range" min="0" max="24" step="1" value="3"><output id="table-cell-padding-value">3 px</output></label>
+    <label>Text
+      <select id="table-cell-align"><option value="right">Right</option><option value="center">Center</option><option value="left">Left</option></select>
+    </label>
+    <label>Cell vertical
+      <select id="table-cell-vertical"><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select>
+    </label>
+    <label>Table width <input id="table-width" type="range" min="10" max="100" step="5" value="100"><output id="table-width-value">100%</output></label>
+    <label>Table alignment
+      <select id="table-alignment"><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+    </label>
+    <label>AutoFit
+      <select id="table-autofit"><option value="fixed">Fixed column widths</option><option value="window">Fit to page width</option><option value="contents">Fit to contents</option></select>
+    </label>
+    <label>Borders
+      <select id="table-borders">
+        <option value="all">All borders</option><option value="outside">Outside</option>
+        <option value="inside">Inside</option><option value="horizontal">Horizontal</option>
+        <option value="vertical">Vertical</option><option value="none">No borders</option>
+      </select>
+    </label>
+    <label><input id="table-repeat-header" type="checkbox"> Repeat first row on printed pages</label>
+    <button type="button" data-table-action="delete-table">Delete table</button>
+  </div>
+  <div id="table-manipulators" class="table-manipulators" aria-label="Table move and resize controls"></div>
+  <div id="image-context-toolbar" class="context-toolbar image-context-toolbar" role="toolbar" aria-label="Picture formatting" hidden>
+    <strong>Picture</strong>
+    <label>Width <input id="image-width" type="range" min="40" max="600" step="10" value="240"><output id="image-width-value">240 px</output></label>
+    <label>Wrap
+      <select id="image-wrap">
+        <option value="inline">In line with text</option><option value="square">Square</option>
+        <option value="top-bottom">Top and bottom</option><option value="behind">Behind text</option>
+        <option value="front">In front of text</option>
+      </select>
+    </label>
+    <label>Align
+      <select id="image-align"><option value="center">Center</option><option value="left">Left</option><option value="right">Right</option></select>
+    </label>
+    <button id="image-delete" type="button">Delete picture</button>
+  </div>
   <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
     <form method="dialog"><button class="shortcuts-close" aria-label="Close keyboard shortcuts">×</button></form>
     <h2 id="shortcuts-title">Keyboard shortcuts</h2>
@@ -404,7 +513,6 @@
     </dl>
     <p>Copy, cut, paste, select-all, and cursor navigation use your browser’s built-in editing shortcuts.</p>
   </dialog>
-  <button id="focus-exit-button" class="focus-exit-button" type="button" aria-label="Exit focus mode">⛶ <span>Back to editor</span></button>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
