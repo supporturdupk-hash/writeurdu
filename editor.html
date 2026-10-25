@@ -141,11 +141,11 @@
           <button type="button" data-paragraph-space="after">↕ <span>Remove Space After Paragraph</span></button>
         </div>
       </div>
-      <div class="ribbon-group editing-group"><button class="ribbon-action" id="find-button" type="button">⌕ <span>Find</span></button><button class="ribbon-action" id="replace-button" type="button">⇄ <span>Replace</span></button><span class="group-caption">Editing</span></div>
+      <div class="ribbon-group editing-group"><button class="ribbon-action" id="find-button" type="button"><img src="assets/Media/find-search-secure-svgrepo-com.svg" alt=""><span>Find</span></button><button class="ribbon-action" id="replace-button" type="button"><img src="assets/Media/search-and-replace-svgrepo-com.svg" alt=""><span>Replace</span></button><span class="group-caption">Editing</span></div>
       <div class="ribbon-group arrange-group" aria-label="Selection and arrange">
-        <button class="ribbon-action" id="select-objects-toggle" type="button" aria-pressed="false" title="Select text, tables, and pictures as objects">▱ <span>Select objects</span></button>
-        <button class="ribbon-action" id="bring-forward" type="button" disabled title="Bring selected object forward">↑ <span>Bring forward</span></button>
-        <button class="ribbon-action" id="send-backward" type="button" disabled title="Send selected object backward">↓ <span>Send backward</span></button>
+        <button class="ribbon-action" id="select-objects-toggle" type="button" aria-pressed="false" title="Select text, tables, and pictures as objects"><img src="assets/Media/select-svgrepo-com.svg" alt=""><span>Select objects</span></button>
+        <button class="ribbon-action" id="bring-forward" type="button" disabled title="Bring selected object forward"><img src="assets/Media/bring-forward-svgrepo-com.svg" alt=""><span>Bring forward</span></button>
+        <button class="ribbon-action" id="send-backward" type="button" disabled title="Send selected object backward"><img class="send-backward-icon" src="assets/Media/bring-forward-svgrepo-com.svg" alt=""><span>Send backward</span></button>
         <span class="group-caption">Arrange</span>
       </div>
     </div>
@@ -160,10 +160,10 @@
             <button id="table-custom-toggle" type="button" aria-expanded="false" aria-controls="table-create-fields">▦ <span>Choose row and column</span></button>
           </div>
           <div id="table-create-fields" class="table-create-fields" hidden>
-            <label>Rows <input id="table-create-rows" type="number" min="1" max="20" value="3"></label>
-            <label>Columns <input id="table-create-columns" type="number" min="1" max="20" value="3"></label>
-            <label>Cell width <input id="table-create-width" type="number" min="40" max="240" step="10" value="120"> px</label>
-            <label>Cell height <input id="table-create-height" type="number" min="28" max="120" step="4" value="56"> px</label>
+            <label>Rows <input id="table-create-rows" type="number" min="1" max="20" value="5"></label>
+            <label>Columns <input id="table-create-columns" type="number" min="1" max="20" value="5"></label>
+            <label>Cell width <input id="table-create-width" type="number" min="40" max="240" step="5" value="125"> px</label>
+            <label>Cell height <input id="table-create-height" type="number" min="12" max="120" step="2" value="24"> px</label>
             <button id="table-create-button" class="table-create-button" type="button">Insert table</button>
           </div>
         </div>
@@ -314,18 +314,39 @@
     </div>
 
     <div class="ribbon-panel" data-panel="table-layout">
+      <div class="ribbon-group table-design-gallery" aria-label="Table styles">
+        <div class="table-style-options" role="group" aria-label="Choose a table design">
+          <button type="button" class="table-style-option" data-table-style="grid" aria-pressed="true" aria-label="Grid table style"><span class="table-style-preview style-grid" aria-hidden="true"></span></button>
+          <button type="button" class="table-style-option" data-table-style="light" aria-pressed="false" aria-label="Light table style"><span class="table-style-preview style-light" aria-hidden="true"></span></button>
+          <button type="button" class="table-style-option" data-table-style="banded" aria-pressed="false" aria-label="Banded table style"><span class="table-style-preview style-banded" aria-hidden="true"></span></button>
+          <button type="button" class="table-style-option" data-table-style="medium" aria-pressed="false" aria-label="Medium table style"><span class="table-style-preview style-medium" aria-hidden="true"></span></button>
+          <button type="button" class="table-style-option" data-table-style="dark" aria-pressed="false" aria-label="Dark table style"><span class="table-style-preview style-dark" aria-hidden="true"></span></button>
+          <button type="button" class="table-style-option" data-table-style="accent" aria-pressed="false" aria-label="Accent table style"><span class="table-style-preview style-accent" aria-hidden="true"></span></button>
+          <button type="button" class="table-style-option" data-table-style="plain" aria-pressed="false" aria-label="Plain table style"><span class="table-style-preview style-plain" aria-hidden="true"></span></button>
+        </div>
+        <span class="group-caption">Table Styles</span>
+      </div>
+      <div class="ribbon-group table-color-delete-group" aria-label="Table color and delete actions">
+        <div class="table-color-control">
+          <div class="color-picker" data-color-picker="table-border">
+            <button class="color-tool table-border-color-tool" type="button" aria-label="Table border color" title="Table border color">▦<span></span></button>
+            <div class="color-palette" role="group" aria-label="Table border color palette"><label class="more-colors">More colors<input id="table-design-border-color" type="color" value="#000000" aria-label="More table border colors"></label></div>
+          </div>
+          <span class="group-caption">Table Color</span>
+        </div>
+        <div class="table-quick-delete" aria-label="Delete table content">
+          <button type="button" class="table-delete-action" data-table-action="delete-row" aria-label="Delete row" title="Delete row"><img src="assets/Media/delete-row-svgrepo-com.svg" alt=""></button>
+          <button type="button" class="table-delete-action" data-table-action="delete-column" aria-label="Delete column" title="Delete column"><img src="assets/Media/delete-column-svgrepo-com.svg" alt=""></button>
+          <button type="button" class="table-delete-action" data-table-action="delete-table" aria-label="Delete table" title="Delete table"><img src="assets/Media/table-delete-svgrepo-com.svg" alt=""></button>
+        </div>
+        <span class="group-caption">Borders &amp; Delete</span>
+      </div>
       <div class="ribbon-group table-layout-group" aria-label="Insert table rows and columns">
         <button type="button" class="table-layout-action" data-table-action="row-above">＋ Row above</button>
         <button type="button" class="table-layout-action" data-table-action="row-below">＋ Row below</button>
         <button type="button" class="table-layout-action" data-table-action="column-left">＋ Column left</button>
         <button type="button" class="table-layout-action" data-table-action="column-right">＋ Column right</button>
         <span class="group-caption">Insert</span>
-      </div>
-      <div class="ribbon-group table-layout-group" aria-label="Delete table rows and columns">
-        <button type="button" class="table-layout-action" data-table-action="delete-row">Delete row</button>
-        <button type="button" class="table-layout-action" data-table-action="delete-column">Delete column</button>
-        <button type="button" class="table-layout-action" data-table-action="delete-table">Delete table</button>
-        <span class="group-caption">Delete</span>
       </div>
       <div class="ribbon-group table-layout-group" aria-label="Merge table cells">
         <button type="button" class="table-layout-action" data-table-action="merge-cells">Merge cells</button>
@@ -360,6 +381,21 @@
             <button type="button" data-onscreen-key="ژ">ژ</button><button type="button" data-onscreen-key="س">س</button><button type="button" data-onscreen-key="ش">ش</button><button type="button" data-onscreen-key="ص">ص</button><button type="button" data-onscreen-key="ض">ض</button><button type="button" data-onscreen-key="ط">ط</button><button type="button" data-onscreen-key="ظ">ظ</button><button type="button" data-onscreen-key="ع">ع</button>
             <button type="button" data-onscreen-key="غ">غ</button><button type="button" data-onscreen-key="ف">ف</button><button type="button" data-onscreen-key="ق">ق</button><button type="button" data-onscreen-key="ک">ک</button><button type="button" data-onscreen-key="گ">گ</button><button type="button" data-onscreen-key="ل">ل</button><button type="button" data-onscreen-key="م">م</button><button type="button" data-onscreen-key="ن">ن</button>
             <button type="button" data-onscreen-key="ں">ں</button><button type="button" data-onscreen-key="و">و</button><button type="button" data-onscreen-key="ہ">ہ</button><button type="button" data-onscreen-key="ھ">ھ</button><button type="button" data-onscreen-key="ء">ء</button><button type="button" data-onscreen-key="ئ">ئ</button><button type="button" data-onscreen-key="ی">ی</button><button type="button" data-onscreen-key="ے">ے</button><button type="button" data-onscreen-key="ؤ">ؤ</button>
+          </div>
+          <div class="keyboard-heading">Harakat / اعراب</div>
+          <div class="keyboard-diacritics" dir="rtl">
+            <button type="button" data-onscreen-key="َ" aria-label="Zabar" title="Zabar">◌َ <span>زبر</span></button>
+            <button type="button" data-onscreen-key="ِ" aria-label="Zer" title="Zer">◌ِ <span>زیر</span></button>
+            <button type="button" data-onscreen-key="ُ" aria-label="Pesh" title="Pesh">◌ُ <span>پیش</span></button>
+            <button type="button" data-onscreen-key="ْ" aria-label="Sukoon" title="Sukoon">◌ْ <span>جزم</span></button>
+            <button type="button" data-onscreen-key="ّ" aria-label="Shadda" title="Shadda">◌ّ <span>تشدید</span></button>
+            <button type="button" data-onscreen-key="ً" aria-label="Fathatan" title="Do zabar">◌ً <span>دو زبر</span></button>
+            <button type="button" data-onscreen-key="ٍ" aria-label="Kasratan" title="Do zer">◌ٍ <span>دو زیر</span></button>
+            <button type="button" data-onscreen-key="ٌ" aria-label="Dammatan" title="Do pesh">◌ٌ <span>دو پیش</span></button>
+            <button type="button" data-onscreen-key="ٰ" aria-label="Khari zabar" title="Khari zabar">◌ٰ <span>کھڑی زبر</span></button>
+            <button type="button" data-onscreen-key="ٓ" aria-label="Maddah" title="Maddah">◌ٓ <span>مدّہ</span></button>
+            <button type="button" data-onscreen-key="ٔ" aria-label="Hamza above" title="Hamza above">◌ٔ <span>ہمزہ بالا</span></button>
+            <button type="button" data-onscreen-key="ٕ" aria-label="Hamza below" title="Hamza below">◌ٕ <span>ہمزہ زیر</span></button>
           </div>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="english" hidden>

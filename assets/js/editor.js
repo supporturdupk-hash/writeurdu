@@ -115,6 +115,9 @@
           clean.dataset.borderWidth = value;
         } else if (name === 'data-border-color' && node.tagName === 'TABLE' && /^#[\da-f]{6}$/i.test(value)) {
           clean.dataset.borderColor = value;
+        } else if (name === 'data-table-style' && node.tagName === 'TABLE' &&
+          ['grid', 'light', 'banded', 'medium', 'dark', 'accent', 'plain'].includes(value)) {
+          clean.dataset.tableStyle = value;
         } else if (name === 'data-canvas-table' && node.tagName === 'TABLE' && value === 'true') {
           clean.dataset.canvasTable = 'true';
         } else if (name === 'data-cell-border-color' && ['TD', 'TH'].includes(node.tagName) && /^#[\da-f]{6}$/i.test(value)) {
@@ -1394,6 +1397,17 @@
       const swatch = event.target.closest('[data-color]');
       if (!swatch) return;
       picker.classList.remove('open');
+      if (picker.dataset.colorPicker === 'table-border') {
+        const table = getActiveTable();
+        picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
+        picker.querySelector('input[type="color"]').value = swatch.dataset.color;
+        if (table) {
+          table.dataset.borderColor = swatch.dataset.color;
+          table.style.setProperty('--table-border-color', swatch.dataset.color);
+          scheduleSave();
+        }
+        return;
+      }
       const isHighlight = picker.dataset.colorPicker === 'highlight';
       runCommand(isHighlight ? 'hiliteColor' : 'foreColor', swatch.dataset.color);
       picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
@@ -1410,6 +1424,15 @@
     picker.querySelector('input[type="color"]').addEventListener('input', (event) => {
       picker.classList.remove('open');
       picker.querySelector('.color-tool > span').style.backgroundColor = event.target.value;
+      if (picker.dataset.colorPicker === 'table-border') {
+        const table = getActiveTable();
+        if (table) {
+          table.dataset.borderColor = event.target.value;
+          table.style.setProperty('--table-border-color', event.target.value);
+          scheduleSave();
+        }
+        return;
+      }
     });
   });
   document.addEventListener('click', (event) => {
@@ -1697,8 +1720,8 @@
       return false;
     }
     if (!Number.isFinite(cellWidth) || cellWidth < 40 || cellWidth > 240 ||
-      !Number.isFinite(cellHeight) || cellHeight < 28 || cellHeight > 120) {
-      showToast('Cell width must be 40–240 px and cell height 28–120 px.');
+      !Number.isFinite(cellHeight) || cellHeight < 12 || cellHeight > 120) {
+      showToast('Cell width must be 40–240 px and cell height 12–120 px.');
       return false;
     }
 
@@ -1709,7 +1732,8 @@
     table.dataset.canvasTable = 'true';
     table.dataset.tableInsertionToken = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     table.dataset.borderWidth = '1';
-    table.dataset.borderColor = '#aeb6c5';
+    table.dataset.borderColor = '#000000';
+    table.dataset.tableStyle = 'grid';
     table.style.width = `${Math.max(10, Math.min(100, Math.round(columns * cellWidth / availableWidth * 100)))}%`;
     table.style.tableLayout = 'fixed';
     const body = table.createTBody();
@@ -1723,9 +1747,8 @@
         cell.style.textAlign = 'right';
         cell.style.direction = 'rtl';
         cell.style.fontFamily = "'Noto Nastaliq Urdu', serif";
-        cell.dataset.cellBorderColor = '#aeb6c5';
+        cell.dataset.cellBorderColor = '#000000';
         cell.dataset.cellBorderWidth = '1';
-        cell.append(document.createElement('br'));
       }
     }
 
@@ -1921,15 +1944,46 @@
   let activeTableCell = null;
   let activeTable = null;
   let selectedObject = null;
+  let selectedTableBand = null;
   const tableToolbar = document.getElementById('table-context-toolbar');
   const imageToolbar = document.getElementById('image-context-toolbar');
   const tableManipulators = document.getElementById('table-manipulators');
   const selectObjectsToggle = document.getElementById('select-objects-toggle');
   const tableLayoutPanel = document.querySelector('[data-panel="table-layout"]');
   const tableLayoutTab = document.getElementById('table-layout-tab');
-  const MIN_TABLE_ROW_HEIGHT = 18;
+  const MIN_TABLE_ROW_HEIGHT = 10;
   const MAX_TABLE_DIMENSION = 20;
   const MAX_TABLE_CELLS = 400;
+  const TABLE_STYLE_PRESETS = {
+    grid: { border: '#000000', header: '#e7e7e7', band: '#f5f5f5', first: '#eeeeee', last: '#eeeeee', total: '#e7e7e7' },
+    light: { border: '#aeb6c5', header: '#e8eef5', band: '#f6f8fa', first: '#edf2f7', last: '#edf2f7', total: '#e8eef5' },
+    banded: { border: '#000000', header: '#dddddd', band: '#f0f0f0', first: '#e8e8e8', last: '#e8e8e8', total: '#dddddd' },
+    medium: { border: '#465c6e', header: '#c4d3e0', band: '#eaf0f5', first: '#dce6ee', last: '#dce6ee', total: '#c4d3e0' },
+    dark: { border: '#26313b', header: '#aeb8c1', band: '#dfe4e8', first: '#cbd2d8', last: '#cbd2d8', total: '#aeb8c1' },
+    accent: { border: '#345f7a', header: '#cde2ef', band: '#eef6fa', first: '#dcecf4', last: '#dcecf4', total: '#cde2ef' },
+    plain: { border: '#000000', header: '#ffffff', band: '#ffffff', first: '#ffffff', last: '#ffffff', total: '#ffffff' }
+  };
+  const syncTableDesignControls = (table) => {
+    if (!table) return;
+    const style = table.dataset.tableStyle || 'grid';
+    tableLayoutPanel.querySelectorAll('.table-style-option[data-table-style]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.tableStyle === style));
+    });
+    document.querySelector('[data-color-picker="table-border"] .color-tool > span').style.backgroundColor =
+      table.dataset.borderColor || TABLE_STYLE_PRESETS[style].border;
+  };
+  const applyTableDesign = (table) => {
+    if (!table) return;
+    const preset = TABLE_STYLE_PRESETS[table.dataset.tableStyle] || TABLE_STYLE_PRESETS.grid;
+    const borderColor = table.dataset.borderColor || preset.border;
+    table.dataset.borderColor = borderColor;
+    table.style.setProperty('--table-border-color', borderColor);
+    Array.from(table.rows).forEach((row, rowIndex) => Array.from(row.cells).forEach((cell) => {
+      cell.style.backgroundColor = table.dataset.tableStyle === 'banded' && rowIndex % 2 === 1 ? preset.band : '';
+    }));
+    syncTableDesignControls(table);
+    scheduleSave();
+  };
   const positionTableToolbar = (cell) => {
     const rect = cell.getBoundingClientRect();
     const workspace = document.querySelector('.document-workspace').getBoundingClientRect();
@@ -1962,6 +2016,7 @@
     const table = cell.closest('table');
     activeTable = table;
     document.body.classList.add('table-tools-open');
+    syncTableDesignControls(table);
     document.getElementById('table-cell-align').value = cell.style.textAlign || 'right';
     const savedWidth = table.style.width || table.getAttribute('width') || '';
     const parsedWidth = Number.parseInt(savedWidth, 10);
@@ -1974,7 +2029,7 @@
     document.getElementById('table-width-value').value = `${tableWidth}%`;
     document.getElementById('table-borders').value = table.dataset.borders || 'all';
     document.getElementById('table-border-width').value = table.dataset.borderWidth || '1';
-    document.getElementById('table-border-color').value = table.dataset.borderColor || '#aeb6c5';
+    document.getElementById('table-border-color').value = table.dataset.borderColor || '#000000';
     document.getElementById('table-alignment').value = table.dataset.tableAlign || 'left';
     document.getElementById('table-autofit').value = table.dataset.tableAutofit || 'fixed';
     document.getElementById('table-repeat-header').checked = table.dataset.repeatHeader === 'true';
@@ -2027,6 +2082,7 @@
     activeImage = null;
     imageToolbar.hidden = true;
     const cell = event.target.closest('td, th');
+    if (!cell && selectedTableBand) return;
     updateTableToolbar(cell && editor.contains(cell) ? cell : null);
     if (!cell && !tableLayoutTab.hidden) {
       tableLayoutTab.hidden = true;
@@ -2036,6 +2092,7 @@
     }
   });
   editor.addEventListener('dblclick', (event) => {
+    if (event.button !== 0) return;
     const table = event.target.closest('table');
     if (!table || !editor.contains(table)) return;
     const cell = event.target.closest('td, th') || table.querySelector('td, th');
@@ -2052,7 +2109,8 @@
   });
   editor.addEventListener('pointerout', (event) => {
     const table = event.target.closest('table');
-    if (!table || table.contains(event.relatedTarget) || tableManipulators.contains(event.relatedTarget) || activeTableCell) return;
+    if (!table || table.contains(event.relatedTarget) || tableManipulators.contains(event.relatedTarget) ||
+      activeTableCell || (selectedTableBand && selectedTableBand.table === table)) return;
     activeTable = null;
     tableManipulators.replaceChildren();
   });
@@ -2104,6 +2162,123 @@
     if (kind === 'move') grip.textContent = '⠿';
     return grip;
   };
+  const getColumnDividerX = (first, second) => {
+    if (first.left < second.left) return (first.right + second.left) / 2;
+    return (first.left + second.right) / 2;
+  };
+  const clearTableBandSelection = () => {
+    if (selectedTableBand) {
+      selectedTableBand.table.querySelectorAll('.table-band-selected').forEach((cell) => {
+        cell.classList.remove('table-band-selected');
+      });
+    }
+    selectedTableBand = null;
+  };
+  const selectTableRange = (table, startRow, endRow, startColumn, endColumn, preferredAxis) => {
+    clearTableBandSelection();
+    if (!table || !editor.contains(table)) return;
+    const rowStart = Math.max(0, Math.min(startRow, endRow));
+    const rowEnd = Math.min(table.rows.length - 1, Math.max(startRow, endRow));
+    const columnStart = Math.max(0, Math.min(startColumn, endColumn));
+    const columnEnd = Math.max(startColumn, endColumn);
+    if (rowEnd < rowStart) return;
+    const rows = Array.from(table.rows);
+    const rectangularRows = rows.slice(rowStart, rowEnd + 1);
+    rectangularRows.forEach((row) => Array.from(row.cells).forEach((cell) => {
+      if (cell.cellIndex >= columnStart && cell.cellIndex <= columnEnd) {
+        cell.classList.add('table-band-selected');
+      }
+    }));
+    const columnCount = Math.max(0, ...rows.map((row) => row.cells.length));
+    const hasMergedCells = rows.some((row) => Array.from(row.cells).some((cell) =>
+      cell.colSpan !== 1 || cell.rowSpan !== 1));
+    const coversCompleteRows = !hasMergedCells && rectangularRows.every((row) =>
+      columnStart === 0 && columnEnd >= row.cells.length - 1) &&
+      (rowStart > 0 || rowEnd < rows.length - 1) &&
+      rows.every((row) => row.parentElement === rows[0].parentElement);
+    const coversCompleteColumns = !hasMergedCells && rowStart === 0 && rowEnd === rows.length - 1 &&
+      rows.every((row) => row.cells.length === columnCount) &&
+      (columnStart > 0 || columnEnd < columnCount - 1) && columnEnd < columnCount;
+    const axis = coversCompleteRows && coversCompleteColumns
+      ? preferredAxis
+      : coversCompleteRows ? 'row' : coversCompleteColumns ? 'column' : null;
+    selectedTableBand = {
+      table, axis,
+      startRow: rowStart, endRow: rowEnd,
+      startColumn: columnStart, endColumn,
+      start: axis === 'row' ? rowStart : columnStart,
+      end: axis === 'row' ? rowEnd : columnEnd
+    };
+    refreshTableManipulators(table);
+  };
+  const getTableBandHandlePosition = (selection) => {
+    const { table, axis, start, end } = selection;
+    if (axis === 'row') {
+      const first = table.rows[start];
+      const last = table.rows[end];
+      if (!first || !last) return null;
+      const firstBounds = first.getBoundingClientRect();
+      const lastBounds = last.getBoundingClientRect();
+      return {
+        left: table.getBoundingClientRect().left - 12,
+        top: (firstBounds.top + lastBounds.bottom) / 2
+      };
+    }
+    const first = table.rows[0] && table.rows[0].cells[start];
+    const last = table.rows[0] && table.rows[0].cells[end];
+    if (!first || !last) return null;
+    const firstBounds = first.getBoundingClientRect();
+    const lastBounds = last.getBoundingClientRect();
+    return {
+      left: (Math.min(firstBounds.left, lastBounds.left) + Math.max(firstBounds.right, lastBounds.right)) / 2,
+      top: table.getBoundingClientRect().top - 12
+    };
+  };
+  let tableBandDrag = null;
+  editor.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const cell = event.target.closest('td, th');
+    if (!cell || !editor.contains(cell)) {
+      const previousTable = selectedTableBand && selectedTableBand.table;
+      clearTableBandSelection();
+      if (previousTable) refreshTableManipulators(previousTable);
+      return;
+    }
+    const previousTable = selectedTableBand && selectedTableBand.table;
+    clearTableBandSelection();
+    if (previousTable) refreshTableManipulators(previousTable);
+    tableBandDrag = {
+      table: cell.closest('table'),
+      startCell: cell,
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerId: event.pointerId,
+      active: false
+    };
+  });
+  document.addEventListener('pointermove', (event) => {
+    if (!tableBandDrag || tableBandDrag.pointerId !== event.pointerId) return;
+    const { table, startCell, startX, startY } = tableBandDrag;
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (!tableBandDrag.active && Math.hypot(dx, dy) < 6) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const endCell = target && target.closest('td, th');
+    if (!endCell || endCell.closest('table') !== table) return;
+    tableBandDrag.active = true;
+    event.preventDefault();
+    const selection = window.getSelection();
+    if (selection) selection.removeAllRanges();
+    const preferredAxis = Math.abs(dx) >= Math.abs(dy) ? 'row' : 'column';
+    selectTableRange(table, startCell.parentElement.rowIndex, endCell.parentElement.rowIndex,
+      startCell.cellIndex, endCell.cellIndex, preferredAxis);
+  });
+  document.addEventListener('pointerup', (event) => {
+    if (!tableBandDrag || tableBandDrag.pointerId !== event.pointerId) return;
+    const selectionTable = tableBandDrag.active ? tableBandDrag.table : null;
+    tableBandDrag = null;
+    if (selectionTable && editor.contains(selectionTable)) refreshTableManipulators(selectionTable);
+  });
   const refreshTableManipulators = (table) => {
     if (!table || !editor.contains(table)) {
       tableManipulators.replaceChildren();
@@ -2120,13 +2295,13 @@
         const first = firstRow.cells[index].getBoundingClientRect();
         const second = firstRow.cells[index + 1].getBoundingClientRect();
         const grip = makeTableGrip('column', index, 'column-grip', `Resize column ${index + 1}`);
-        grip.style.left = `${(first.right + second.left) / 2}px`;
+        grip.style.left = `${getColumnDividerX(first, second)}px`;
         grip.style.top = `${bounds.top}px`;
         grip.style.height = `${bounds.height}px`;
         grips.push(grip);
         const addColumn = makeTableGrip('insert-column', index, 'table-insert-grip', `Insert column after column ${index + 1}`);
         addColumn.textContent = '+';
-        addColumn.style.left = `${(first.right + second.left) / 2}px`;
+        addColumn.style.left = `${getColumnDividerX(first, second)}px`;
         addColumn.style.top = `${bounds.top}px`;
         addColumn.style.display = 'none';
         grips.push(addColumn);
@@ -2147,40 +2322,189 @@
       addRow.style.display = 'none';
       grips.push(addRow);
     }
+    const lastRow = table.rows[table.rows.length - 1];
+    if (lastRow) {
+      const bottomGrip = makeTableGrip('row', table.rows.length - 1, 'row-grip', 'Resize last row');
+      bottomGrip.style.top = `${bounds.bottom}px`;
+      bottomGrip.style.left = `${bounds.left}px`;
+      bottomGrip.style.width = `${bounds.width}px`;
+      grips.push(bottomGrip);
+    }
+    if (selectedTableBand && selectedTableBand.table === table && selectedTableBand.axis) {
+      const position = getTableBandHandlePosition(selectedTableBand);
+      if (position) {
+        const kind = selectedTableBand.axis === 'row' ? 'row-reorder' : 'column-reorder';
+        const handle = makeTableGrip(kind, selectedTableBand.start, 'table-selection-handle',
+          `Move selected ${selectedTableBand.axis === 'row' ? 'row' : 'column'}`);
+        const dots = document.createElement('span');
+        dots.className = 'table-handle-dots';
+        for (let dot = 0; dot < 6; dot += 1) dots.append(document.createElement('span'));
+        handle.append(dots);
+        handle.style.left = `${position.left}px`;
+        handle.style.top = `${position.top}px`;
+        grips.push(handle);
+      }
+    }
     tableManipulators.replaceChildren(...grips);
     tableManipulators.hidden = false;
   };
   tableManipulators.addEventListener('pointermove', (event) => {
+    if (event.target.closest('.table-insert-grip')) return;
     const grip = event.target.closest('.column-grip, .row-grip');
-    if (!grip) return;
+    if (!grip) {
+      tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => { item.style.display = 'none'; });
+      return;
+    }
     const isColumn = grip.classList.contains('column-grip');
     const addGrip = tableManipulators.querySelector(
       `[data-grip-kind="${isColumn ? 'insert-column' : 'insert-row'}"][data-grip-index="${grip.dataset.gripIndex}"]`);
-    if (!addGrip || !activeTable) return;
-    tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => {
-      item.style.display = item === addGrip ? 'grid' : 'none';
-    });
+    if (!addGrip || !activeTable) {
+      tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => { item.style.display = 'none'; });
+      return;
+    }
+    tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => { item.style.display = 'none'; });
     const bounds = activeTable.getBoundingClientRect();
+    const nearOuterEnd = isColumn
+      ? Math.abs(event.clientY - bounds.top) <= 12
+      : Math.abs(event.clientX - bounds.left) <= 12;
+    if (!nearOuterEnd) return;
+    addGrip.style.display = 'grid';
     if (isColumn) {
-      addGrip.style.left = `${(grip.getBoundingClientRect().left + grip.getBoundingClientRect().right) / 2}px`;
-      addGrip.style.top = `${Math.max(bounds.top + 9, Math.min(bounds.bottom - 9, event.clientY))}px`;
+      addGrip.style.left = `${grip.getBoundingClientRect().left + grip.getBoundingClientRect().width / 2}px`;
+      addGrip.style.top = `${bounds.top}px`;
     } else {
-      addGrip.style.left = `${Math.max(bounds.left + 9, Math.min(bounds.right - 9, event.clientX))}px`;
+      addGrip.style.left = `${bounds.left}px`;
       addGrip.style.top = `${(grip.getBoundingClientRect().top + grip.getBoundingClientRect().bottom) / 2}px`;
     }
   });
+  document.addEventListener('pointermove', (event) => {
+    if (event.target.closest('.column-grip, .row-grip, .table-insert-grip')) return;
+    tableManipulators.querySelectorAll('.table-insert-grip').forEach((grip) => { grip.style.display = 'none'; });
+  });
   tableManipulators.addEventListener('pointerleave', () => {
-    tableManipulators.querySelectorAll('.table-insert-grip').forEach((grip) => {
-      grip.style.display = 'none';
-    });
+    tableManipulators.querySelectorAll('.table-insert-grip').forEach((grip) => { grip.style.display = 'none'; });
   });
   let tableDrag = null;
+  const makeTableReorderPreview = () => {
+    const preview = document.createElement('div');
+    preview.className = 'table-reorder-preview';
+    preview.hidden = true;
+    const insertionMarker = document.createElement('span');
+    insertionMarker.className = 'table-reorder-insertion';
+    preview.append(insertionMarker);
+    tableManipulators.append(preview);
+    return { element: preview, insertionMarker };
+  };
+  const hideTableReorderPreview = (drag) => {
+    drag.preview.element.hidden = true;
+    drag.dropIndex = null;
+  };
+  const updateTableReorderPreview = (drag, x, y) => {
+    const { table, selection, kind, preview } = drag;
+    const tableBounds = table.getBoundingClientRect();
+    const horizontal = kind === 'row-reorder';
+    if (horizontal
+      ? x < tableBounds.left - 24 || x > tableBounds.right + 24 ||
+        y < tableBounds.top - 12 || y > tableBounds.bottom + 12
+      : y < tableBounds.top - 24 || y > tableBounds.bottom + 24 ||
+        x < tableBounds.left - 12 || x > tableBounds.right + 12) {
+      hideTableReorderPreview(drag);
+      return;
+    }
+    const rows = Array.from(table.rows);
+    if (horizontal) {
+      const movingRows = rows.slice(selection.start, selection.end + 1);
+      const parent = rows[0] && rows[0].parentElement;
+      if (!parent || rows.some((row) => row.parentElement !== parent)) {
+        hideTableReorderPreview(drag);
+        return;
+      }
+      const remainingRows = rows.filter((row) => !movingRows.includes(row));
+      const insertionIndex = remainingRows.filter((row) => {
+        const bounds = row.getBoundingClientRect();
+        return y >= bounds.top + bounds.height / 2;
+      }).length;
+      const boundary = insertionIndex === 0
+        ? (remainingRows[0] ? remainingRows[0].getBoundingClientRect().top : tableBounds.top)
+        : insertionIndex === remainingRows.length
+          ? (remainingRows[remainingRows.length - 1]
+            ? remainingRows[remainingRows.length - 1].getBoundingClientRect().bottom
+            : tableBounds.bottom)
+          : (remainingRows[insertionIndex - 1].getBoundingClientRect().bottom +
+            remainingRows[insertionIndex].getBoundingClientRect().top) / 2;
+      const height = movingRows.reduce((total, row) => total + row.getBoundingClientRect().height, 0);
+      drag.dropIndex = insertionIndex;
+      preview.element.style.left = `${tableBounds.left}px`;
+      preview.element.style.top = `${boundary}px`;
+      preview.element.style.width = `${tableBounds.width}px`;
+      preview.element.style.height = `${height}px`;
+      preview.insertionMarker.style.left = '0';
+      preview.insertionMarker.style.top = '0';
+      preview.insertionMarker.style.width = '100%';
+      preview.insertionMarker.style.height = '3px';
+    } else {
+      const firstRow = rows[0];
+      if (!firstRow || rows.some((row) => row.cells.length !== firstRow.cells.length ||
+        Array.from(row.cells).some((cell) => cell.colSpan !== 1 || cell.rowSpan !== 1))) {
+        hideTableReorderPreview(drag);
+        return;
+      }
+      const movingColumns = Array.from({ length: selection.end - selection.start + 1 },
+        (_, offset) => selection.start + offset);
+      const remainingColumns = Array.from({ length: firstRow.cells.length }, (_, index) => index)
+        .filter((index) => !movingColumns.includes(index));
+      const isRtl = getComputedStyle(table).direction === 'rtl';
+      const insertionIndex = remainingColumns.filter((index) => {
+        const bounds = firstRow.cells[index].getBoundingClientRect();
+        const midpoint = bounds.left + bounds.width / 2;
+        return isRtl ? x < midpoint : x >= midpoint;
+      }).length;
+      const boundary = insertionIndex === 0
+        ? (isRtl ? tableBounds.right : tableBounds.left)
+        : insertionIndex === remainingColumns.length
+          ? (isRtl ? tableBounds.left : tableBounds.right)
+          : getColumnDividerX(
+            firstRow.cells[remainingColumns[insertionIndex - 1]].getBoundingClientRect(),
+            firstRow.cells[remainingColumns[insertionIndex]].getBoundingClientRect());
+      const width = movingColumns.reduce((total, index) =>
+        total + firstRow.cells[index].getBoundingClientRect().width, 0);
+      drag.dropIndex = insertionIndex;
+      preview.element.style.left = `${isRtl ? boundary - width : boundary}px`;
+      preview.element.style.top = `${tableBounds.top}px`;
+      preview.element.style.width = `${width}px`;
+      preview.element.style.height = `${tableBounds.height}px`;
+      preview.insertionMarker.style.left = isRtl ? 'auto' : '0';
+      preview.insertionMarker.style.right = isRtl ? '0' : 'auto';
+      preview.insertionMarker.style.top = '0';
+      preview.insertionMarker.style.width = '3px';
+      preview.insertionMarker.style.height = '100%';
+    }
+    preview.element.hidden = false;
+  };
   tableManipulators.addEventListener('pointerdown', (event) => {
     const grip = event.target.closest('[data-grip-kind]');
     if (!grip || !activeTable || !editor.contains(activeTable)) return;
     event.preventDefault();
     const kind = grip.dataset.gripKind;
     if (kind.startsWith('insert-')) return;
+    if (kind === 'row-reorder' || kind === 'column-reorder') {
+      const axis = kind === 'row-reorder' ? 'row' : 'column';
+      if (!selectedTableBand || selectedTableBand.table !== activeTable || selectedTableBand.axis !== axis) return;
+      grip.classList.add('is-dragging');
+      const preview = makeTableReorderPreview();
+      tableDrag = {
+        kind,
+        table: activeTable,
+        selection: { ...selectedTableBand },
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        active: false,
+        dropIndex: null,
+        preview
+      };
+      return;
+    }
     const index = Number(grip.dataset.gripIndex);
     const table = activeTable;
     const rows = Array.from(table.rows);
@@ -2195,15 +2519,22 @@
       secondColumnWidth = second.width;
     }
     tableDrag = {
-      kind, index, table, startX: event.clientX, startY: event.clientY,
+      kind, index, table, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
       rowBounds, firstColumnWidth, secondColumnWidth,
-      rowHeight: rowBounds ? rowBounds.height : 0,
-      nextRowHeight: rows[index + 1] ? rows[index + 1].getBoundingClientRect().height : 0
+      rowHeight: rowBounds ? rowBounds.height : 0
     };
   });
   document.addEventListener('pointermove', (event) => {
     if (!tableDrag) return;
     const { kind, index, table, startX, startY } = tableDrag;
+    if (tableDrag.pointerId !== event.pointerId) return;
+    if (kind === 'row-reorder' || kind === 'column-reorder') {
+      if (!tableDrag.active && Math.hypot(event.clientX - startX, event.clientY - startY) < 4) return;
+      tableDrag.active = true;
+      event.preventDefault();
+      updateTableReorderPreview(tableDrag, event.clientX, event.clientY);
+      return;
+    }
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
     if (kind === 'column') {
@@ -2216,7 +2547,9 @@
       const rightCellIndex = leftCellIndex === index ? index + 1 : index;
       const leftCellWidth = leftCellIndex === index ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
       const rightCellWidth = rightCellIndex === index ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
-      const delta = Math.max(32 - leftCellWidth, Math.min(leftCellWidth - 32, dx));
+      const rightCellMinimum = rightCellWidth - 32;
+      const leftCellMinimum = 32 - leftCellWidth;
+      const delta = Math.max(leftCellMinimum, Math.min(rightCellMinimum, dx));
       table.style.tableLayout = 'fixed';
       Array.from(table.rows).forEach((tableRow) => {
         const leftCell = tableRow.cells[leftCellIndex];
@@ -2227,17 +2560,10 @@
       });
     } else if (kind === 'row') {
       const row = table.rows[index];
-      const nextRow = table.rows[index + 1];
-      if (!row || !nextRow) return;
-      const minimumDelta = MIN_TABLE_ROW_HEIGHT - tableDrag.rowHeight;
-      const maximumDelta = tableDrag.nextRowHeight - MIN_TABLE_ROW_HEIGHT;
-      const delta = Math.max(minimumDelta, Math.min(maximumDelta, dy));
-      const rowHeight = tableDrag.rowHeight + delta;
-      const nextRowHeight = tableDrag.nextRowHeight - delta;
+      if (!row) return;
+      const rowHeight = Math.max(MIN_TABLE_ROW_HEIGHT, tableDrag.rowHeight + dy);
       row.style.height = `${rowHeight}px`;
-      nextRow.style.height = `${nextRowHeight}px`;
       Array.from(row.cells).forEach((cell) => { cell.style.height = `${rowHeight}px`; });
-      Array.from(nextRow.cells).forEach((cell) => { cell.style.height = `${nextRowHeight}px`; });
     } else if (kind === 'move') {
       const pageBounds = editor.getBoundingClientRect();
       const x = Math.max(pageBounds.left, Math.min(pageBounds.right, event.clientX));
@@ -2291,13 +2617,69 @@
         }
       }
     }
-    refreshTableManipulators(table);
+    if (kind !== 'row-reorder' && kind !== 'column-reorder') refreshTableManipulators(table);
     positionTableToolbar(activeTableCell || table.querySelector('td, th'));
   });
-  document.addEventListener('pointerup', () => {
-    if (!tableDrag) return;
+  const reorderSelectedRows = (selection, insertionIndex) => {
+    const { table, start, end } = selection;
+    const rows = Array.from(table.rows);
+    const parent = rows[0] && rows[0].parentElement;
+    if (!parent || rows.some((row) => row.parentElement !== parent)) return false;
+    const moving = rows.slice(start, end + 1);
+    const remaining = rows.filter((row) => !moving.includes(row));
+    if (!Number.isInteger(insertionIndex) || insertionIndex < 0 || insertionIndex > remaining.length) return false;
+    remaining.splice(insertionIndex, 0, ...moving);
+    if (remaining.every((row, index) => row === rows[index])) return false;
+    remaining.forEach((row) => parent.append(row));
+    selectTableRange(table, insertionIndex, insertionIndex + moving.length - 1,
+      0, Math.max(...rows.map((row) => row.cells.length)) - 1, 'row');
+    return true;
+  };
+  const reorderSelectedColumns = (selection, insertionIndex) => {
+    const { table, start, end } = selection;
+    const rows = Array.from(table.rows);
+    const firstRow = rows[0];
+    if (!firstRow || rows.some((row) => row.cells.length !== firstRow.cells.length ||
+      Array.from(row.cells).some((cell) => cell.colSpan !== 1 || cell.rowSpan !== 1))) return false;
+    const movingIndexes = Array.from({ length: end - start + 1 }, (_, offset) => start + offset);
+    const remainingIndexes = Array.from({ length: firstRow.cells.length }, (_, index) => index)
+      .filter((index) => index < start || index > end);
+    if (!Number.isInteger(insertionIndex) || insertionIndex < 0 || insertionIndex > remainingIndexes.length) return false;
+    remainingIndexes.splice(insertionIndex, 0, ...movingIndexes);
+    if (remainingIndexes.every((index, position) => index === position)) return false;
+    rows.forEach((row) => {
+      const cells = Array.from(row.cells);
+      remainingIndexes.forEach((index) => row.append(cells[index]));
+    });
+    selectTableRange(table, 0, rows.length - 1, insertionIndex,
+      insertionIndex + movingIndexes.length - 1, 'column');
+    return true;
+  };
+  document.addEventListener('pointerup', (event) => {
+    if (!tableDrag || tableDrag.pointerId !== event.pointerId) return;
+    let reordered = false;
+    if (tableDrag.active && tableDrag.dropIndex !== null && tableDrag.kind === 'row-reorder') {
+      reordered = reorderSelectedRows(tableDrag.selection, tableDrag.dropIndex);
+    } else if (tableDrag.active && tableDrag.dropIndex !== null && tableDrag.kind === 'column-reorder') {
+      reordered = reorderSelectedColumns(tableDrag.selection, tableDrag.dropIndex);
+    }
+    const table = tableDrag.table;
+    if (tableDrag.preview) tableDrag.preview.element.remove();
+    const changed = reordered || (tableDrag.kind !== 'row-reorder' &&
+      tableDrag.kind !== 'column-reorder');
     tableDrag = null;
-    scheduleSave();
+    if (table && editor.contains(table)) refreshTableManipulators(table);
+    if (changed) scheduleSave();
+  });
+  document.addEventListener('pointercancel', (event) => {
+    if (tableBandDrag && tableBandDrag.pointerId === event.pointerId) tableBandDrag = null;
+    if (!tableDrag || tableDrag.pointerId !== event.pointerId) return;
+    const table = tableDrag.table;
+    const changed = tableDrag.kind !== 'row-reorder' && tableDrag.kind !== 'column-reorder';
+    if (tableDrag.preview) tableDrag.preview.element.remove();
+    tableDrag = null;
+    if (table && editor.contains(table)) refreshTableManipulators(table);
+    if (changed) scheduleSave();
   });
   window.addEventListener('resize', () => {
     if (activeTable) refreshTableManipulators(activeTable);
@@ -2340,15 +2722,12 @@
     table.setAttribute('width', '100%');
   };
   const createTableCell = (tagName) => {
-    const cell = document.createElement(tagName);
-    cell.append(document.createElement('br'));
-    return cell;
+    return document.createElement(tagName);
   };
   const createMatchingEmptyCell = (source) => {
     const cell = source ? source.cloneNode(false) : createTableCell('td');
     cell.rowSpan = 1;
     cell.colSpan = 1;
-    cell.append(document.createElement('br'));
     return cell;
   };
   const focusTableCell = (cell) => {
@@ -2363,6 +2742,19 @@
     savedEditorRange = range.cloneRange();
     updateTableToolbar(cell);
   };
+  document.querySelectorAll('[data-table-style]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const table = getActiveTable();
+      if (!table) return;
+      table.dataset.tableStyle = button.dataset.tableStyle;
+      const picker = document.querySelector('[data-color-picker="table-border"]');
+      const borderColor = TABLE_STYLE_PRESETS[button.dataset.tableStyle].border;
+      table.dataset.borderColor = borderColor;
+      picker.querySelector('input[type="color"]').value = borderColor;
+      picker.querySelector('.color-tool > span').style.backgroundColor = borderColor;
+      applyTableDesign(table);
+    });
+  });
   tableManipulators.addEventListener('click', (event) => {
     const grip = event.target.closest('[data-grip-kind^="insert-"]');
     if (!grip || !activeTable || !editor.contains(activeTable)) return;
@@ -2383,6 +2775,8 @@
       insertTableColumn(table, index);
       focusTableCell(table.rows[0].cells[index + 1]);
     }
+    applyTableDesign(table);
+    refreshTableManipulators(table);
     editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertTable' }));
     scheduleSave();
     updateCounts();
@@ -2454,7 +2848,8 @@
       if (action === 'row-above' || action === 'row-below') {
         if (!canExpandTable(table, 1, 0)) return;
         const newRow = document.createElement('tr');
-        Array.from(row.cells).forEach((cell) => newRow.append(createTableCell(cell.tagName.toLowerCase())));
+        newRow.style.height = `${row.getBoundingClientRect().height}px`;
+        Array.from(row.cells).forEach((cell) => newRow.append(createMatchingEmptyCell(cell)));
         row.parentElement.insertBefore(newRow, action === 'row-above' ? row : row.nextSibling);
         updateTableToolbar(newRow.cells[columnIndex]);
       } else if (action === 'column-left' || action === 'column-right') {
@@ -2535,6 +2930,14 @@
           cell.style.whiteSpace = 'pre-wrap';
           cell.style.overflowWrap = 'anywhere';
         }));
+      }
+      applyTableDesign(table);
+      refreshTableManipulators(table);
+      if (!editor.contains(table)) {
+        tableLayoutTab.hidden = true;
+        if (tableLayoutTab.classList.contains('active')) {
+          activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+        }
       }
       scheduleSave();
       updateCounts();
@@ -2618,6 +3021,9 @@
     if (!table) return;
     table.dataset.borderColor = event.currentTarget.value;
     table.style.setProperty('--table-border-color', event.currentTarget.value);
+    const picker = document.querySelector('[data-color-picker="table-border"]');
+    picker.querySelector('.color-tool > span').style.backgroundColor = event.currentTarget.value;
+    picker.querySelector('input[type="color"]').value = event.currentTarget.value;
     scheduleSave();
   });
   document.getElementById('image-width').addEventListener('input', (event) => {
@@ -2760,6 +3166,7 @@
     document.body.classList.toggle('home-ribbon-active', homeSelected);
     document.querySelector('.ribbon-shell').classList.toggle('home-ribbon', homeSelected);
     closeLayoutMenus();
+    if (button !== tableLayoutTab) tableLayoutTab.hidden = true;
     document.querySelectorAll('.tab-button').forEach((tab) => tab.classList.toggle('active', tab === button));
     document.querySelectorAll('.ribbon-panel').forEach((panel) => {
       panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab);
