@@ -49,6 +49,9 @@
         if (!['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH'].includes(node.tagName)) {
           Array.from(node.childNodes).forEach((child) => fragment.append(cleanNode(child)));
         }
+        if (clean.tagName === 'DIV' && clean.dataset.editorShape === 'true' && clean.dataset.shapeFill) {
+          clean.style.backgroundColor = clean.dataset.shapeFill;
+        }
         return fragment;
       }
 
@@ -60,10 +63,19 @@
       Array.from(node.attributes).forEach(({ name, value }) => {
         if (name === 'dir' && ['ltr', 'rtl', 'auto'].includes(value.toLowerCase())) {
           clean.setAttribute('dir', value.toLowerCase());
+        } else if (name === 'lang' && ['en', 'ur'].includes(value.toLowerCase())) {
+          clean.setAttribute('lang', value.toLowerCase());
         } else if (name === 'class' && node.tagName === 'DIV' &&
-          value.split(/\s+/).some((className) => ['page-break', 'column-break'].includes(className))) {
-          clean.className = value.split(/\s+/).find((className) => ['page-break', 'column-break'].includes(className));
+          value.split(/\s+/).some((className) => ['page-break', 'column-break', 'editor-shape'].includes(className))) {
+          clean.className = value.split(/\s+/).find((className) => ['page-break', 'column-break', 'editor-shape'].includes(className));
           clean.setAttribute('contenteditable', 'false');
+        } else if (name === 'data-editor-shape' && node.tagName === 'DIV' && value === 'true') {
+          clean.dataset.editorShape = 'true';
+        } else if (name === 'data-shape-type' && node.tagName === 'DIV' &&
+          /^[a-z][a-z0-9-]{0,30}$/.test(value)) {
+          clean.dataset.shapeType = value;
+        } else if (name === 'data-shape-fill' && node.tagName === 'DIV' && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.shapeFill = value;
         } else if (name === 'class' && node.tagName === 'DIV' && documentRegion &&
           value.split(/\s+/).includes(`document-${documentRegion}`)) {
           clean.className = `document-${documentRegion}`;
@@ -71,12 +83,27 @@
           clean.dataset.documentRegion = value;
         } else if (name === 'data-empty' && node.tagName === 'DIV' && documentRegion && ['true', 'false'].includes(value)) {
           clean.dataset.empty = value;
+        } else if (name === 'data-page-number-location' && node.tagName === 'DIV' && documentRegion &&
+          ['header-left', 'header-center', 'header-right', 'footer-left', 'footer-center', 'footer-right'].includes(value)) {
+          clean.dataset.pageNumberLocation = value;
+        } else if (name === 'data-page-number-style' && node.tagName === 'DIV' && documentRegion &&
+          ['decimal', 'upper-roman', 'lower-roman', 'upper-alpha', 'lower-alpha'].includes(value)) {
+          clean.dataset.pageNumberStyle = value;
         } else if (name === 'data-page-number-field' && isPageNumberField) {
           clean.dataset.pageNumberField = value;
         } else if (name === 'data-page-number-set' && node.tagName === 'SPAN' && value === 'true') {
           clean.dataset.pageNumberSet = 'true';
+        } else if (name === 'data-watermark' && ['DIV', 'IMG'].includes(node.tagName) &&
+          (node.tagName === 'DIV' && value === 'text' || node.tagName === 'IMG' && value === 'image')) {
+          clean.dataset.watermark = value;
+        } else if (name === 'data-watermark-opacity' && ['DIV', 'IMG'].includes(node.tagName) &&
+          /^(?:0?\.\d{1,2}|1(?:\.0{1,2})?)$/.test(value) &&
+          Number(value) >= 0.05 && Number(value) <= 1) {
+          clean.dataset.watermarkOpacity = value;
         } else if (name === 'contenteditable' && value === 'false' &&
-          (node.classList.contains('page-break') || node.classList.contains('column-break') || isPageNumberField)) {
+          (node.classList.contains('page-break') || node.classList.contains('column-break') || node.classList.contains('editor-shape') ||
+            isPageNumberField || (documentRegion && node.dataset.pageNumberLocation) ||
+            ['text', 'image'].includes(node.dataset.watermark))) {
           clean.setAttribute(name, 'false');
         } else if (['colspan', 'rowspan'].includes(name) && ['TD', 'TH'].includes(node.tagName)) {
           const span = Number.parseInt(value, 10);
@@ -99,15 +126,41 @@
           clean.setAttribute('alt', value.slice(0, 200));
         } else if (name === 'width' && node.tagName === 'IMG') {
           const width = Number.parseInt(value, 10);
-          if (Number.isInteger(width) && width >= 40 && width <= 2000) clean.setAttribute('width', String(width));
+          if (Number.isInteger(width) && width >= 1 && width <= 10000) clean.setAttribute('width', String(width));
         } else if (name === 'width' && node.tagName === 'TABLE' && /^(?:[1-9]\d?|100)%$/.test(value)) {
           clean.setAttribute('width', value);
         } else if (name === 'data-image-wrap' && node.tagName === 'IMG' &&
-          ['inline', 'square', 'top-bottom', 'behind', 'front'].includes(value)) {
+          ['inline', 'square', 'top-bottom', 'behind', 'front', 'free'].includes(value)) {
           clean.dataset.imageWrap = value;
         } else if (name === 'data-image-align' && node.tagName === 'IMG' &&
           ['left', 'center', 'right'].includes(value)) {
           clean.dataset.imageAlign = value;
+        } else if (name === 'data-image-crop' && node.tagName === 'IMG' &&
+          /^(?:\d{1,2}),\s*(?:\d{1,2}),\s*(?:\d{1,2}),\s*(?:\d{1,2})$/.test(value)) {
+          const insets = value.split(',').map(Number);
+          if (insets.every((inset) => inset <= 45) && insets[0] + insets[2] < 90 &&
+            insets[1] + insets[3] < 90) {
+            clean.dataset.imageCrop = insets.join(',');
+          }
+        } else if (name === 'data-image-rotation' && node.tagName === 'IMG' &&
+          /^(?:0|[1-9]\d?|[12]\d\d|3[0-5]\d)$/.test(value)) {
+          clean.dataset.imageRotation = value;
+        } else if (name === 'data-image-border-color' && node.tagName === 'IMG' && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.imageBorderColor = value;
+        } else if (name === 'data-image-border-width' && node.tagName === 'IMG' && /^(?:[0-9]|10)$/.test(value)) {
+          clean.dataset.imageBorderWidth = value;
+        } else if (name === 'data-image-radius' && node.tagName === 'IMG' && /^(?:[0-9]|[1-4]\d|50)$/.test(value)) {
+          clean.dataset.imageRadius = value;
+        } else if (name === 'data-image-opacity' && node.tagName === 'IMG' &&
+          /^(?:0|1|0?\.\d{1,2}|1(?:\.0{1,2})?)$/.test(value) && Number(value) >= 0 && Number(value) <= 1) {
+          clean.dataset.imageOpacity = value;
+        } else if (name === 'data-editor-shape' && node.tagName === 'IMG' && value === 'true') {
+          clean.dataset.editorShape = 'true';
+        } else if (name === 'data-shape-type' && node.tagName === 'IMG' &&
+          /^[a-z][a-z0-9-]{0,30}$/.test(value)) {
+          clean.dataset.shapeType = value;
+        } else if (name === 'data-shape-fill' && node.tagName === 'IMG' && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.shapeFill = value;
         } else if (name === 'data-borders' && node.tagName === 'TABLE' &&
           ['all', 'outside', 'inside', 'horizontal', 'vertical', 'none'].includes(value)) {
           clean.dataset.borders = value;
@@ -128,20 +181,41 @@
           clean.dataset.tableAlign = value;
         } else if (name === 'data-table-autofit' && node.tagName === 'TABLE' && ['fixed', 'window', 'contents'].includes(value)) {
           clean.dataset.tableAutofit = value;
+        } else if (name === 'data-table-position' && node.tagName === 'TABLE' && value === 'free') {
+          clean.dataset.tablePosition = value;
         } else if (name === 'data-repeat-header' && node.tagName === 'TABLE' && value === 'true') {
           clean.dataset.repeatHeader = 'true';
         } else if (name === 'data-layer' && /^-10$|^-?[0-9]$|^10$/.test(value)) {
           clean.dataset.layer = value;
         } else if (name === 'style') {
           const styles = [];
-          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'width', 'height', 'z-index', 'table-layout']) {
+          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'width', 'height', 'left', 'top', 'opacity', 'z-index', 'table-layout']) {
             const styleValue = node.style.getPropertyValue(property).trim();
             if (!styleValue) continue;
             if (property === 'font-family' && fontFamilies.includes(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'font-size' && /^(?:\d{1,4}(?:\.\d{1,2})?(?:px|pt|em|rem|%))$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
-            if (property === 'width' && node.tagName === 'TABLE' && /^(?:auto|(?:[1-9]\d?|100)%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (            property === 'width' && (node.tagName === 'TABLE' || node.tagName === 'DIV' && node.dataset.editorShape === 'true') &&
+              (/^(?:auto|(?:[1-9]\d?|100)%)$/.test(styleValue) ||
+                /^\d+(?:\.\d{1,4})?px$/.test(styleValue) && Number.parseFloat(styleValue) <= 10000)) {
+              styles.push(`${property}:${styleValue}`);
+            }
+            if (['left', 'top'].includes(property) &&
+              (node.tagName === 'TABLE' && node.dataset.tablePosition === 'free' ||
+                node.tagName === 'IMG' && (node.dataset.imageWrap === 'free' ||
+                  node.dataset.watermark === 'image') ||
+                node.tagName === 'DIV' && node.dataset.watermark === 'text') &&
+              /^\d+(?:\.\d{1,4})?px$/.test(styleValue) &&
+              Number.parseFloat(styleValue) <= 10000) styles.push(`${property}:${styleValue}`);
+            if (property === 'opacity' && ['DIV', 'IMG'].includes(node.tagName) &&
+              ['text', 'image'].includes(node.dataset.watermark) &&
+              /^(?:0?\.\d{1,2}|1(?:\.0{1,2})?)$/.test(styleValue) &&
+              Number(styleValue) >= 0.05 && Number(styleValue) <= 1) styles.push(`${property}:${styleValue}`);
             if (property === 'width' && ['TD', 'TH'].includes(node.tagName) && /^(?:\d{1,4}(?:\.\d{1,6})?px|\d{1,3}%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'height' && ['TR', 'TD', 'TH'].includes(node.tagName) && /^(?:\d{1,4}(?:\.\d{1,6})?px)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'height' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
+              /^\d{1,4}(?:\.\d{1,4})?px$/.test(styleValue) && Number.parseFloat(styleValue) <= 10000) {
+              styles.push(`${property}:${styleValue}`);
+            }
             if (property === 'z-index' && /^-10$|^-?[0-9]$|^10$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'table-layout' && node.tagName === 'TABLE' && ['auto', 'fixed'].includes(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'font-weight' && /^(?:normal|bold|[1-9]00)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
@@ -160,8 +234,31 @@
         }
       });
       if (clean.tagName === 'TABLE') {
+        if (clean.dataset.tablePosition === 'free' &&
+          (!clean.style.left || !clean.style.top)) {
+          delete clean.dataset.tablePosition;
+          clean.style.removeProperty('left');
+          clean.style.removeProperty('top');
+        }
+        if (['DIV', 'IMG'].includes(clean.tagName) && clean.dataset.watermarkOpacity) {
+          clean.style.opacity = clean.dataset.watermarkOpacity;
+        }
         if (clean.dataset.borderWidth) clean.style.setProperty('--table-border-width', `${clean.dataset.borderWidth}px`);
         if (clean.dataset.borderColor) clean.style.setProperty('--table-border-color', clean.dataset.borderColor);
+      }
+      if (clean.tagName === 'IMG') {
+        const rotation = Number(clean.dataset.imageRotation || 0);
+        if (rotation) clean.style.rotate = `${rotation}deg`;
+        const borderWidth = Number(clean.dataset.imageBorderWidth || 0);
+        if (borderWidth) {
+          clean.style.border = `${borderWidth}px solid ${clean.dataset.imageBorderColor || '#176b9a'}`;
+        }
+        if (clean.dataset.imageRadius !== undefined) clean.style.borderRadius = `${clean.dataset.imageRadius}px`;
+        if (clean.dataset.imageOpacity !== undefined) clean.style.opacity = clean.dataset.imageOpacity;
+        if (clean.dataset.imageCrop) {
+          const [top, right, bottom, left] = clean.dataset.imageCrop.split(',');
+          clean.style.clipPath = `inset(${top}% ${right}% ${bottom}% ${left}%)`;
+        }
       }
       if (['TD', 'TH'].includes(clean.tagName) && clean.dataset.cellBorderColor) {
         clean.style.borderColor = clean.dataset.cellBorderColor;
@@ -184,6 +281,7 @@
   }
 
   function updateCounts() {
+    syncPageBreakLayout();
     const text = editor.innerText.replace(/\u00a0/g, ' ').trim();
     const words = text ? text.split(/\s+/u).filter(Boolean).length : 0;
     const characters = Array.from(text).length;
@@ -192,20 +290,125 @@
     const pages = Math.max(1, editor.querySelectorAll('.page-break').length + 1);
     document.getElementById('page-total').textContent = String(pages);
     updatePageNumberFields(pages);
+    syncPageNumberPrintLocation();
+  }
+
+  function syncPageBreakLayout() {
+    const pageBreaks = Array.from(editor.querySelectorAll('.page-break'));
+    editor.dataset.multipage = String(pageBreaks.length > 0);
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+    const pageStride = pageHeight + pageGap;
+    editor.style.minHeight = `${pageHeight * (pageBreaks.length + 1) + pageGap * pageBreaks.length}px`;
+    pageBreaks.forEach((pageBreak) => {
+      const pageOffset = ((pageBreak.offsetTop % pageStride) + pageStride) % pageStride;
+      const spaceToNextPage = pageStride - pageOffset;
+      pageBreak.style.setProperty('--page-break-space', `${spaceToNextPage}px`);
+    });
+  }
+
+  function syncVerticalRuler() {
+    if (!verticalRuler) return;
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+    const pageScale = editor.getBoundingClientRect().height / editor.offsetHeight;
+    const workspace = document.querySelector('.document-workspace');
+    const visiblePageY = workspace.getBoundingClientRect().top + workspace.clientHeight / 2 -
+      editor.getBoundingClientRect().top;
+    const pageIndex = Math.max(0, Math.min(
+      editor.querySelectorAll('.page-break').length,
+      Math.floor(Math.max(0, visiblePageY / pageScale) / (pageHeight + pageGap))
+    ));
+    const renderedHeight = pageHeight * pageScale;
+    const renderedScale = 96 * pageScale;
+    verticalRuler.style.height = `${renderedHeight}px`;
+    verticalRuler.style.setProperty('--ruler-unit', `${renderedScale}px`);
+    verticalRuler.style.setProperty('--ruler-start', `${rulerPixels(getComputedStyle(editor).paddingTop) / pageHeight * 100}%`);
+    verticalRuler.style.setProperty('--ruler-end', `${(pageHeight - rulerPixels(getComputedStyle(editor).paddingBottom)) / pageHeight * 100}%`);
+    verticalRuler.parentElement.style.top = `${pageIndex * (pageHeight + pageGap) * pageScale}px`;
+    verticalRuler.parentElement.style.left = `${editor.getBoundingClientRect().width + 30}px`;
+    const pageActions = document.querySelector('.page-actions');
+    pageActions.style.left = `${editor.getBoundingClientRect().width + 5}px`;
+    pageActions.style.top = `${pageIndex * (pageHeight + pageGap) * pageScale + 12}px`;
+    document.getElementById('delete-page-button').disabled =
+      editor.querySelectorAll('.page-break').length === 0;
+    verticalRuler.querySelector('[data-ruler-handle="margin-top"]').style.top =
+      `${Math.max(0, rulerPixels(getComputedStyle(editor).paddingTop) * pageScale - 5)}px`;
+    verticalRuler.querySelector('[data-ruler-handle="margin-bottom"]').style.top =
+      `${Math.max(0, renderedHeight - rulerPixels(getComputedStyle(editor).paddingBottom) * pageScale - 5)}px`;
+    if (verticalRuler.dataset.renderedHeight !== String(renderedHeight) ||
+      verticalRuler.dataset.renderedScale !== String(renderedScale)) {
+      updateRulerLabels(pageScale, renderedHeight, true);
+      verticalRuler.dataset.renderedHeight = String(renderedHeight);
+      verticalRuler.dataset.renderedScale = String(renderedScale);
+    }
+    verticalRuler.dataset.pageIndex = String(pageIndex);
   }
 
   function updatePageNumberFields(pageCount) {
     editor.querySelectorAll('[data-page-number-field="number"]').forEach((field) => {
-      const regionName = field.closest('[data-document-region]')?.dataset.documentRegion;
-      const page = regionName === 'footer'
-        ? pageCount
-        : Array.from(editor.querySelectorAll('.page-break')).filter((pageBreak) =>
-          pageBreak.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).length + 1;
-      field.textContent = String(page);
+      const page = Array.from(editor.querySelectorAll('.page-break')).filter((pageBreak) =>
+        pageBreak.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).length + 1;
+      const region = field.closest('[data-document-region]');
+      const style = region?.dataset.pageNumberStyle || 'decimal';
+      field.textContent = formatPageNumber(page, style);
+      field.dataset.pageNumberStyle = style;
     });
     editor.querySelectorAll('[data-page-number-field="total"]').forEach((field) => {
       field.textContent = String(pageCount);
     });
+  }
+
+  function formatPageNumber(number, style) {
+    if (style === 'decimal') return String(number);
+    if (style === 'upper-alpha' || style === 'lower-alpha') {
+      let value = number;
+      let result = '';
+      while (value > 0) {
+        value -= 1;
+        result = String.fromCharCode(65 + value % 26) + result;
+        value = Math.floor(value / 26);
+      }
+      return style === 'lower-alpha' ? result.toLowerCase() : result;
+    }
+    const romanValues = [
+      [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
+      [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+    ];
+    let value = Math.min(number, 3999);
+    let result = '';
+    romanValues.forEach(([amount, numeral]) => {
+      while (value >= amount) {
+        result += numeral;
+        value -= amount;
+      }
+    });
+    if (number > 3999) result += ` (${number})`;
+    return style === 'lower-roman' ? result.toLowerCase() : result;
+  }
+
+  function syncPageNumberPrintLocation() {
+    const pageNumberSets = editor.querySelectorAll('[data-page-number-set="true"]');
+    pageNumberSets.forEach((pageNumberSet) => {
+      const number = pageNumberSet.querySelector('[data-page-number-field="number"]');
+      if (number) pageNumberSet.replaceChildren(number);
+      pageNumberSet.contentEditable = 'false';
+      pageNumberSet.style.userSelect = 'none';
+      pageNumberSet.style.cursor = 'default';
+    });
+    const firstPageNumberSet = pageNumberSets[0];
+    const containingRegion = firstPageNumberSet && firstPageNumberSet.closest('[data-document-region]');
+    if (containingRegion && !containingRegion.dataset.pageNumberLocation) {
+      const alignment = ['left', 'center', 'right'].includes(containingRegion.style.textAlign)
+        ? containingRegion.style.textAlign
+        : 'left';
+      containingRegion.dataset.pageNumberLocation = `${containingRegion.dataset.documentRegion}-${alignment}`;
+    }
+    const region = editor.querySelector('[data-page-number-location]');
+    if (region && !region.dataset.pageNumberStyle) region.dataset.pageNumberStyle = 'decimal';
+    const location = region?.dataset.pageNumberLocation;
+    const style = region?.dataset.pageNumberStyle || 'decimal';
+    editor.style.page = location ? `page-number-${location}-${style}` : '';
   }
 
   const wordSuggestions = document.getElementById('word-suggestions');
@@ -376,7 +579,8 @@
 
   function syncRulers() {
     if (!horizontalRuler || !verticalRuler) return;
-    pageFrame.style.width = `${editor.getBoundingClientRect().width + 20}px`;
+    pageFrame.style.width = `${editor.getBoundingClientRect().width + 60}px`;
+    document.getElementById('add-page-button').style.width = `${editor.offsetWidth}px`;
     const paperRect = editor.getBoundingClientRect();
     const rulerRect = horizontalRuler.parentElement.getBoundingClientRect();
     const horizontalScale = paperRect.width / editor.offsetWidth;
@@ -412,19 +616,14 @@
     setMarker('paragraph-start', paragraphStart);
     setMarker('paragraph-end', paragraphEnd);
 
-    verticalRuler.style.height = `${verticalHeight}px`;
-    verticalRuler.style.setProperty('--ruler-unit', `${96 * verticalScale}px`);
-    verticalRuler.style.setProperty('--ruler-start', `${paddingTop / editor.offsetHeight * 100}%`);
-    verticalRuler.style.setProperty('--ruler-end', `${(editor.offsetHeight - paddingBottom) / editor.offsetHeight * 100}%`);
-    updateRulerLabels(verticalScale, verticalHeight, true);
-    verticalRuler.querySelector('[data-ruler-handle="margin-top"]').style.top = `${Math.max(0, paddingTop * verticalScale - 5)}px`;
-    verticalRuler.querySelector('[data-ruler-handle="margin-bottom"]').style.top = `${Math.max(0, verticalHeight - paddingBottom * verticalScale - 5)}px`;
-    verticalRuler.parentElement.style.left = `${horizontalWidth}px`;
+    syncVerticalRuler();
   }
 
   function rulerDragValue(event, track, vertical) {
     const rect = track.getBoundingClientRect();
-    const dimension = vertical ? editor.offsetHeight : editor.offsetWidth;
+    const dimension = vertical
+      ? Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123
+      : editor.offsetWidth;
     const renderedDimension = vertical ? rect.height : rect.width;
     const offset = vertical ? event.clientY - rect.top : event.clientX - rect.left;
     return Math.max(0, Math.min(dimension, offset * dimension / renderedDimension));
@@ -433,7 +632,7 @@
   function setRulerValue(handle, value) {
     const style = getComputedStyle(editor);
     const pageWidth = editor.offsetWidth;
-    const pageHeight = editor.offsetHeight;
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
     const minMargin = 36;
     if (handle === 'margin-left' || handle === 'margin-right') {
       const key = handle === 'margin-left' ? 'paddingLeft' : 'paddingRight';
@@ -903,7 +1102,6 @@
 
   const keyboardToggle = document.getElementById('onscreen-keyboard-toggle');
   const onscreenKeyboard = document.getElementById('onscreen-keyboard');
-  let keyboardShifted = false;
   let keyboardLayout = 'urdu';
   keyboardToggle.addEventListener('click', () => {
     const expanded = keyboardToggle.getAttribute('aria-expanded') !== 'true';
@@ -921,29 +1119,15 @@
       document.querySelectorAll('[data-keyboard-panel]').forEach((panel) => {
         panel.hidden = panel.dataset.keyboardPanel !== layout;
       });
-      if (layout !== 'english') setKeyboardShift(false);
     });
   });
-  function setKeyboardShift(shifted) {
-    keyboardShifted = shifted;
-    document.querySelectorAll('[data-shifted-key]').forEach((key) => {
-      key.textContent = shifted ? key.dataset.shiftedKey : key.dataset.onscreenKey;
-    });
-    const shiftButton = document.querySelector('.keyboard-shift');
-    shiftButton.setAttribute('aria-pressed', String(shifted));
-  }
   document.querySelector('.keyboard-sidebar').addEventListener('pointerdown', rememberEditorSelection, true);
-  document.querySelectorAll('[data-onscreen-action="shift"]').forEach((button) => {
-    button.addEventListener('click', () => setKeyboardShift(!keyboardShifted));
-  });
   document.querySelectorAll('[data-onscreen-key]').forEach((button) => {
     button.addEventListener('click', () => {
       focusEditor();
       const selection = window.getSelection();
       if (!selection || !selection.rangeCount) return;
-      const key = keyboardShifted && button.dataset.shiftedKey
-        ? button.dataset.shiftedKey
-        : button.dataset.onscreenKey;
+      const key = button.dataset.onscreenKey;
       if (key === 'Backspace') {
         if (selection.isCollapsed) selection.modify('extend', 'backward', 'character');
         document.execCommand('delete');
@@ -951,7 +1135,7 @@
         document.execCommand('insertParagraph');
       } else {
         const wasUrduTyping = urduTyping;
-        if (keyboardLayout === 'english') urduTyping = false;
+        if (keyboardLayout === 'symbols') urduTyping = false;
         try {
           document.execCommand('insertText', false, key);
         } finally {
@@ -1408,6 +1592,18 @@
         }
         return;
       }
+      if (picker.dataset.colorPicker === 'image-border') {
+        const image = activeImage;
+        picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
+        picker.querySelector('input[type="color"]').value = swatch.dataset.color;
+        if (image && editor.contains(image)) {
+          image.dataset.imageBorderColor = swatch.dataset.color;
+          const borderWidth = Number(image.dataset.imageBorderWidth || 0);
+          image.style.border = borderWidth ? `${borderWidth}px solid ${swatch.dataset.color}` : 'none';
+          scheduleSave();
+        }
+        return;
+      }
       const isHighlight = picker.dataset.colorPicker === 'highlight';
       runCommand(isHighlight ? 'hiliteColor' : 'foreColor', swatch.dataset.color);
       picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
@@ -1429,6 +1625,16 @@
         if (table) {
           table.dataset.borderColor = event.target.value;
           table.style.setProperty('--table-border-color', event.target.value);
+          scheduleSave();
+        }
+        return;
+      }
+      if (picker.dataset.colorPicker === 'image-border') {
+        const image = activeImage;
+        if (image && editor.contains(image)) {
+          image.dataset.imageBorderColor = event.target.value;
+          const borderWidth = Number(image.dataset.imageBorderWidth || 0);
+          image.style.border = borderWidth ? `${borderWidth}px solid ${event.target.value}` : 'none';
           scheduleSave();
         }
         return;
@@ -1786,10 +1992,57 @@
       document.getElementById('table-create-columns').value
     );
   });
+  const shapeGroups = [
+    ['Lines', [['line', 'Line'], ['arrow', 'Arrow'], ['double-arrow', 'Double arrow'], ['elbow-connector', 'Elbow connector'], ['curved-arrow', 'Curved arrow']]],
+    ['Rectangles', [['rectangle', 'Rectangle'], ['rounded-rectangle', 'Rounded rectangle'], ['snip-corner-rectangle', 'Snip corner rectangle'], ['round-one-corner-rectangle', 'Round one corner rectangle'], ['parallelogram', 'Parallelogram'], ['trapezoid', 'Trapezoid']]],
+    ['Basic Shapes', [['ellipse', 'Oval'], ['triangle', 'Triangle'], ['right-triangle', 'Right triangle'], ['diamond', 'Diamond'], ['pentagon', 'Pentagon'], ['hexagon', 'Hexagon'], ['octagon', 'Octagon'], ['star', '5-point star'], ['heart', 'Heart'], ['cloud', 'Cloud'], ['plus', 'Plus'], ['pie', 'Pie'], ['arc', 'Arc'], ['smiley-face', 'Smiley face'], ['moon', 'Moon'], ['sun', 'Sun'], ['lightning-bolt', 'Lightning bolt']]],
+    ['Block Arrows', [['arrow', 'Right arrow'], ['left-arrow', 'Left arrow'], ['up-arrow', 'Up arrow'], ['down-arrow', 'Down arrow'], ['left-right-arrow', 'Left-right arrow'], ['chevron', 'Chevron'], ['pentagon', 'Pentagon arrow'], ['u-turn-arrow', 'U-turn arrow']]],
+    ['Equation Shapes', [['plus', 'Plus'], ['minus', 'Minus'], ['multiply', 'Multiply'], ['divide', 'Divide'], ['equal', 'Equal'], ['not-equal', 'Not equal']]],
+    ['Flowchart', [['flow-process', 'Process'], ['flow-decision', 'Decision'], ['flow-data', 'Data'], ['flow-document', 'Document'], ['flow-terminal', 'Terminator'], ['flow-preparation', 'Preparation'], ['flow-delay', 'Delay'], ['flow-storage', 'Storage']]],
+    ['Stars & Banners', [['star', '5-point star'], ['star-4', '4-point star'], ['star-8', '8-point star'], ['star-16', '16-point star'], ['star-24', '24-point star'], ['star-32', '32-point star'], ['ribbon', 'Ribbon'], ['wave-banner', 'Wave banner']]]
+  ];
+  const shapeLibrary = document.getElementById('shape-library');
+  shapeGroups.forEach(([category, shapes]) => {
+    const section = document.createElement('section');
+    section.className = 'shape-category';
+    const heading = document.createElement('strong');
+    heading.textContent = category;
+    const grid = document.createElement('div');
+    grid.className = 'shape-library-grid';
+    shapes.forEach(([type, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.insertShape = type;
+      button.title = label;
+      button.setAttribute('aria-label', label);
+      const preview = document.createElement('span');
+      preview.className = 'shape-preview';
+      preview.dataset.preview = type;
+      button.append(preview);
+      grid.append(button);
+    });
+    section.append(heading, grid);
+    shapeLibrary.append(section);
+  });
+  shapeLibrary.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('[data-insert-shape]')) event.preventDefault();
+  });
+  shapeLibrary.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-insert-shape]');
+    if (!button) return;
+    const type = button.dataset.insertShape;
+    if (!/^[a-z][a-z0-9-]{0,30}$/.test(type)) return;
+    closeInsertMenus();
+    insertHtml(`<div class="editor-shape" contenteditable="false" data-editor-shape="true" data-shape-type="${type}" data-shape-fill="#176b9a" style="width:140px;height:90px"></div><p><br></p>`);
+    const shapes = editor.querySelectorAll('.editor-shape');
+    const shape = shapes[shapes.length - 1];
+    if (shape) showShapeToolbar(shape);
+  });
   const insertMenus = [
     { button: document.getElementById('table-button'), menu: document.getElementById('table-menu') },
     { button: document.getElementById('page-number-button'), menu: document.getElementById('page-number-menu') },
-    { button: document.getElementById('emoji-button'), menu: document.getElementById('emoji-menu') }
+    { button: document.getElementById('emoji-button'), menu: document.getElementById('emoji-menu') },
+    { button: document.getElementById('shapes-button'), menu: document.getElementById('shapes-menu') }
   ];
   insertMenus.forEach(({ menu }) => document.body.append(menu));
   const closeInsertMenus = () => insertMenus.forEach(({ button, menu }) => {
@@ -1838,34 +2091,140 @@
     button.addEventListener('click', () => {
       const [regionName, alignment] = button.dataset.pageNumberLocation.split('-');
       const region = ensureDocumentRegion(regionName, alignment);
+      editor.querySelectorAll('[data-document-region]').forEach((item) => {
+        item.removeAttribute('data-page-number-location');
+      });
+      editor.querySelectorAll('[data-page-number-set="true"]').forEach((field) => field.remove());
+      region.querySelectorAll('p').forEach((paragraph) => {
+        if (!paragraph.textContent.trim()) paragraph.remove();
+      });
+      region.style.textAlign = alignment;
+      region.dataset.empty = 'false';
+      region.dataset.pageNumberLocation = button.dataset.pageNumberLocation;
+      region.dataset.pageNumberStyle = document.getElementById('page-number-style').value;
       const pageNumberSet = document.createElement('span');
       pageNumberSet.dataset.pageNumberSet = 'true';
-      pageNumberSet.append('Page ');
+      pageNumberSet.contentEditable = 'false';
       const number = document.createElement('span');
       number.dataset.pageNumberField = 'number';
       number.setAttribute('contenteditable', 'false');
       number.textContent = '1';
       pageNumberSet.append(number);
-      if (document.getElementById('include-page-count').checked) {
-        pageNumberSet.append(' of ');
-        const total = document.createElement('span');
-        total.dataset.pageNumberField = 'total';
-        total.setAttribute('contenteditable', 'false');
-        total.textContent = String(Math.max(1, editor.querySelectorAll('.page-break').length + 1));
-        pageNumberSet.append(total);
-      }
-      region.append(document.createTextNode(region.childNodes.length ? ' ' : ''), pageNumberSet);
+      region.append(pageNumberSet);
+      const hasOtherContent = Array.from(region.childNodes).some((node) =>
+        node !== pageNumberSet && node.textContent.trim());
+      region.setAttribute('contenteditable', hasOtherContent ? 'true' : 'false');
       closeInsertMenus();
       updateCounts();
       scheduleSave();
-      focusDocumentRegion(region);
+      window.getSelection()?.removeAllRanges();
     });
+  });
+  document.getElementById('page-number-style').addEventListener('change', (event) => {
+    const region = editor.querySelector('[data-page-number-location]');
+    if (!region) return;
+    region.dataset.pageNumberStyle = event.currentTarget.value;
+    updateCounts();
+    scheduleSave();
+  });
+  document.getElementById('page-number-button').addEventListener('click', () => {
+    const region = editor.querySelector('[data-page-number-location]');
+    document.getElementById('page-number-style').value = region?.dataset.pageNumberStyle || 'decimal';
   });
   document.getElementById('remove-page-numbers').addEventListener('click', () => {
     editor.querySelectorAll('[data-page-number-set="true"]').forEach((field) => field.remove());
+    editor.querySelectorAll('[data-document-region]').forEach((region) => {
+      region.removeAttribute('data-page-number-location');
+      region.removeAttribute('data-page-number-style');
+      region.setAttribute('contenteditable', 'true');
+      region.dataset.empty = String(!region.textContent.trim());
+    });
+    editor.style.page = '';
     closeInsertMenus();
     updateCounts();
     scheduleSave();
+  });
+  function createPageBreak() {
+    const pageBreak = document.createElement('div');
+    pageBreak.className = 'page-break';
+    pageBreak.contentEditable = 'false';
+    pageBreak.setAttribute('aria-hidden', 'true');
+    return pageBreak;
+  }
+  function getPageContentNodes(pageIndex, pageBreaks = Array.from(editor.querySelectorAll('.page-break'))) {
+    const children = Array.from(editor.children);
+    const start = pageIndex === 0 ? 0 : children.indexOf(pageBreaks[pageIndex - 1]) + 1;
+    const end = pageIndex < pageBreaks.length ? children.indexOf(pageBreaks[pageIndex]) : children.length;
+    return children.slice(start, end).filter((node) =>
+      !node.matches('.document-header, .document-footer'));
+  }
+  document.getElementById('copy-page-button').addEventListener('click', () => {
+    const pageBreaks = Array.from(editor.querySelectorAll('.page-break'));
+    const pageIndex = Math.max(0, Math.min(pageBreaks.length, Number(verticalRuler.dataset.pageIndex) || 0));
+    const sourceNodes = getPageContentNodes(pageIndex, pageBreaks);
+    const clonedNodes = sourceNodes.map((node) => node.cloneNode(true));
+    clonedNodes.forEach((node) => {
+      if (node.id) node.removeAttribute('id');
+      node.querySelectorAll('[id]').forEach((child) => child.removeAttribute('id'));
+      node.classList.remove('image-selected');
+      node.querySelectorAll('.image-selected').forEach((child) => child.classList.remove('image-selected'));
+    });
+    if (clonedNodes.length === 0) {
+      const paragraph = document.createElement('p');
+      paragraph.append(document.createElement('br'));
+      clonedNodes.push(paragraph);
+    }
+    const nextPageBreak = pageBreaks[pageIndex] || null;
+    editor.insertBefore(createPageBreak(), nextPageBreak);
+    const fragment = document.createDocumentFragment();
+    clonedNodes.forEach((node) => fragment.append(node));
+    editor.insertBefore(fragment, nextPageBreak);
+    syncPageBreakLayout();
+    updateLayoutLineNumbers();
+    updateCounts();
+    syncRulers();
+    scheduleSave();
+    clonedNodes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.getElementById('delete-page-button').addEventListener('click', () => {
+    const pageBreaks = Array.from(editor.querySelectorAll('.page-break'));
+    if (pageBreaks.length === 0) return;
+    const pageIndex = Math.max(0, Math.min(pageBreaks.length, Number(verticalRuler.dataset.pageIndex) || 0));
+    getPageContentNodes(pageIndex, pageBreaks).forEach((node) => node.remove());
+    if (pageIndex < pageBreaks.length) pageBreaks[pageIndex].remove();
+    else pageBreaks[pageIndex - 1].remove();
+    const hasPageContent = Array.from(editor.children).some((node) =>
+      !node.matches('.page-break, .document-header, .document-footer'));
+    if (!hasPageContent) {
+      const paragraph = document.createElement('p');
+      paragraph.append(document.createElement('br'));
+      editor.append(paragraph);
+    }
+    syncPageBreakLayout();
+    updateLayoutLineNumbers();
+    updateCounts();
+    syncRulers();
+    scheduleSave();
+    editor.querySelector('p')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.getElementById('add-page-button').addEventListener('click', () => {
+    const pageBreak = createPageBreak();
+    const paragraph = document.createElement('p');
+    paragraph.append(document.createElement('br'));
+    editor.append(pageBreak, paragraph);
+    syncPageBreakLayout();
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    range.collapse(true);
+    const selection = window.getSelection();
+    editor.focus();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    savedEditorRange = range.cloneRange();
+    updateLayoutLineNumbers();
+    updateCounts();
+    scheduleSave();
+    paragraph.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
   function ensureDocumentRegion(name, alignment = 'center') {
     let region = editor.querySelector(`[data-document-region="${name}"]`);
@@ -1932,8 +2291,11 @@
       if (typeof reader.result === 'string') {
         insertHtml(`<img src="${reader.result}" alt="Inserted image" width="240" data-image-wrap="inline" data-image-align="center" data-pending-image="true">`);
         activeImage = editor.querySelector('img[data-pending-image="true"]');
-        if (activeImage) activeImage.removeAttribute('data-pending-image');
-        if (activeImage) showImageToolbar(activeImage);
+        if (activeImage) {
+          activeImage.removeAttribute('data-pending-image');
+          setImageWrap(activeImage, 'free');
+          showImageToolbar(activeImage);
+        }
       }
     });
     reader.addEventListener('error', () => window.alert('Could not read the image.'));
@@ -1941,12 +2303,21 @@
     event.target.value = '';
   });
   let activeImage = null;
+  let activeShape = null;
+  let imageCropMode = false;
   let activeTableCell = null;
   let activeTable = null;
   let selectedObject = null;
   let selectedTableBand = null;
   const tableToolbar = document.getElementById('table-context-toolbar');
   const imageToolbar = document.getElementById('image-context-toolbar');
+  const imageManipulators = document.getElementById('image-manipulators');
+  const shapeManipulators = document.getElementById('shape-manipulators');
+  const shapeToolbar = document.getElementById('shape-context-toolbar');
+  const imageRotationIndicator = document.getElementById('image-rotation-indicator');
+  const watermarkToolbar = document.getElementById('watermark-context-toolbar');
+  const watermarkManipulators = document.getElementById('watermark-manipulators');
+  const watermarkDialog = document.getElementById('watermark-dialog');
   const tableManipulators = document.getElementById('table-manipulators');
   const selectObjectsToggle = document.getElementById('select-objects-toggle');
   const tableLayoutPanel = document.querySelector('[data-panel="table-layout"]');
@@ -2004,6 +2375,353 @@
     toolbar.style.left = `${Math.max(8, Math.min(anchor.left, maxLeft))}px`;
     toolbar.style.top = `${Math.max(8, Math.min(preferredTop, maxTop))}px`;
   };
+  const positionImageToolbar = (anchor) => {
+    if (imageToolbar.hidden) return;
+    const gap = 46;
+    const fitsRight = anchor.right + gap + imageToolbar.offsetWidth <= window.innerWidth - 8;
+    const left = fitsRight ? anchor.right + gap : Math.max(8, anchor.left - imageToolbar.offsetWidth - gap);
+    const top = Math.max(8, Math.min(
+      (anchor.top + anchor.bottom - imageToolbar.offsetHeight) / 2,
+      window.innerHeight - imageToolbar.offsetHeight - 8
+    ));
+    imageToolbar.style.left = `${left}px`;
+    imageToolbar.style.top = `${top}px`;
+  };
+  let activeWatermark = null;
+  let watermarkDrag = null;
+  let watermarkResizeDrag = null;
+  const refreshWatermarkManipulators = (watermark) => {
+    watermarkManipulators.replaceChildren();
+    watermarkManipulators.hidden = !watermark || !editor.contains(watermark);
+    if (watermarkManipulators.hidden) return;
+    const bounds = watermark.getBoundingClientRect();
+    [
+      ['nw', bounds.left, bounds.top, 'top-left'],
+      ['ne', bounds.right, bounds.top, 'top-right'],
+      ['sw', bounds.left, bounds.bottom, 'bottom-left'],
+      ['se', bounds.right, bounds.bottom, 'bottom-right']
+    ].forEach(([corner, left, top, label]) => {
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = `image-resize-handle image-resize-${corner}`;
+      handle.dataset.watermarkResizeCorner = corner;
+      handle.setAttribute('aria-label', `Resize watermark from ${label}`);
+      handle.style.left = `${left}px`;
+      handle.style.top = `${top}px`;
+      watermarkManipulators.append(handle);
+    });
+  };
+  const getWatermarkDirection = (text) => /[\u0590-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/u.test(text) ? 'rtl' : 'ltr';
+  const showWatermarkToolbar = (watermark) => {
+    if (activeShape) activeShape.classList.remove('shape-selected');
+    activeShape = null;
+    shapeToolbar.hidden = true;
+    shapeManipulators.hidden = true;
+    shapeManipulators.replaceChildren();
+    if (activeImage) activeImage.classList.remove('image-selected', 'image-crop-active');
+    activeImage = null;
+    imageCropMode = false;
+    imageToolbar.hidden = true;
+    imageManipulators.hidden = true;
+    tableToolbar.hidden = true;
+    activeTable = null;
+    activeTableCell = null;
+    document.body.classList.remove('table-tools-open');
+    tableManipulators.replaceChildren();
+    if (activeWatermark && activeWatermark !== watermark) {
+      activeWatermark.classList.remove('watermark-selected');
+    }
+    activeWatermark = watermark;
+    activeWatermark.classList.add('watermark-selected');
+    const isText = watermark.dataset.watermark === 'text';
+    const opacity = Math.round(Number(watermark.dataset.watermarkOpacity || 0.25) * 100);
+    document.getElementById('watermark-edit-text-field').hidden = !isText;
+    document.getElementById('watermark-edit-width-field').hidden = !watermark.matches('img');
+    document.getElementById('watermark-edit-text').value = isText ? watermark.textContent : '';
+    applyWatermarkTextDirection(watermarkEditTextInput, getWatermarkDirection(watermark.textContent));
+    document.getElementById('watermark-edit-opacity').value = String(opacity);
+    document.getElementById('watermark-edit-opacity-value').value = `${opacity}%`;
+    const width = watermark.matches('img') ? Number(watermark.getAttribute('width')) || watermark.width : 240;
+    document.getElementById('watermark-edit-width').value = String(Math.max(40, Math.min(2000, width)));
+    document.getElementById('watermark-edit-width-value').value = `${width}px`;
+    watermarkToolbar.hidden = true;
+    refreshWatermarkManipulators(watermark);
+  };
+  const insertWatermark = (type, value, opacity) => {
+    let watermark;
+    if (type === 'text') {
+      watermark = document.createElement('div');
+      watermark.textContent = value;
+      watermark.dir = getWatermarkDirection(value);
+      watermark.lang = watermark.dir === 'rtl' ? 'ur' : 'en';
+      watermark.style.fontSize = '56px';
+      watermark.style.fontWeight = '700';
+      watermark.style.color = '#777777';
+    } else {
+      watermark = document.createElement('img');
+      watermark.src = value;
+      watermark.alt = 'Watermark';
+      watermark.width = 200;
+    }
+    watermark.dataset.watermark = type;
+    watermark.dataset.watermarkOpacity = (opacity / 100).toFixed(2);
+    watermark.contentEditable = 'false';
+    watermark.style.position = 'absolute';
+    watermark.style.opacity = watermark.dataset.watermarkOpacity;
+    watermark.style.left = `${Math.max(0, (editor.offsetWidth - (type === 'image' ? watermark.width : 240)) / 2)}px`;
+    watermark.style.top = `${Math.max(0, editor.offsetHeight / 2 - 50)}px`;
+    editor.append(watermark);
+    showWatermarkToolbar(watermark);
+    scheduleSave();
+    return watermark;
+  };
+  document.getElementById('watermark-button').addEventListener('click', () => {
+    watermarkDialog.showModal();
+  });
+  const watermarkPreview = document.getElementById('watermark-preview');
+  const watermarkPreviewText = document.getElementById('watermark-preview-text');
+  const watermarkPreviewImage = document.getElementById('watermark-preview-image');
+  const watermarkTextInput = document.getElementById('watermark-text');
+  const watermarkEditTextInput = document.getElementById('watermark-edit-text');
+  const applyWatermarkTextDirection = (input, direction) => {
+    input.dir = direction;
+    input.lang = direction === 'rtl' ? 'ur' : 'en';
+  };
+  const enableUrduTyping = (input) => {
+    input.addEventListener('keydown', (event) => {
+      if (!urduTyping || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
+        event.key.length !== 1) return;
+      const output = UrduKeyboardLayout.mapKey(event);
+      if (output === event.key) return;
+      event.preventDefault();
+      input.setRangeText(output, input.selectionStart, input.selectionEnd, 'end');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const updateWatermarkPreview = () => {
+    const imageMode = document.querySelector('input[name="watermark-kind"]:checked').value === 'image';
+    watermarkPreviewText.hidden = imageMode;
+    watermarkPreviewImage.hidden = !imageMode || !watermarkPreviewImage.hasAttribute('src');
+    watermarkPreviewText.textContent = watermarkTextInput.value || ' ';
+    applyWatermarkTextDirection(watermarkPreviewText, getWatermarkDirection(watermarkTextInput.value));
+    const opacity = String(Number(document.getElementById('watermark-opacity').value) / 100);
+    watermarkPreviewText.style.opacity = opacity;
+    watermarkPreviewImage.style.opacity = opacity;
+  };
+  enableUrduTyping(watermarkTextInput);
+  enableUrduTyping(watermarkEditTextInput);
+  document.querySelectorAll('input[name="watermark-kind"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const isImage = input.value === 'image' && input.checked;
+      document.getElementById('watermark-text-field').hidden = isImage;
+      document.getElementById('watermark-image-field').hidden = !isImage;
+      updateWatermarkPreview();
+    });
+  });
+  watermarkTextInput.addEventListener('input', updateWatermarkPreview);
+  applyWatermarkTextDirection(watermarkTextInput, getWatermarkDirection(watermarkTextInput.value));
+  document.getElementById('watermark-opacity').addEventListener('input', (event) => {
+    document.getElementById('watermark-opacity-value').value = `${event.currentTarget.value}%`;
+    updateWatermarkPreview();
+  });
+  document.getElementById('watermark-image-file').addEventListener('change', (event) => {
+    const file = event.currentTarget.files[0];
+    if (!file || !['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      watermarkPreviewImage.removeAttribute('src');
+      updateWatermarkPreview();
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result !== 'string') return;
+      watermarkPreviewImage.src = reader.result;
+      updateWatermarkPreview();
+    });
+    reader.addEventListener('error', () => window.alert('Could not preview the watermark image.'));
+    reader.readAsDataURL(file);
+  });
+  updateWatermarkPreview();
+  document.getElementById('watermark-cancel').addEventListener('click', () => watermarkDialog.close());
+  document.getElementById('watermark-insert').addEventListener('click', () => {
+    const type = document.querySelector('input[name="watermark-kind"]:checked').value;
+    const opacity = Number(document.getElementById('watermark-opacity').value);
+    if (type === 'text') {
+      const text = document.getElementById('watermark-text').value.trim();
+      if (!text) {
+        showToast('Enter text for the watermark.');
+        return;
+      }
+      watermarkDialog.close();
+      insertWatermark('text', text, opacity);
+      return;
+    }
+    const file = document.getElementById('watermark-image-file').files[0];
+    if (!file) {
+      showToast('Choose an image for the watermark.');
+      return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      window.alert('Please select a PNG, JPEG, GIF, or WebP image for the watermark.');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      window.alert('Watermark image size must be under 2 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result !== 'string') return;
+      watermarkDialog.close();
+      insertWatermark('image', reader.result, opacity);
+    });
+    reader.addEventListener('error', () => window.alert('Could not read the watermark image.'));
+    reader.readAsDataURL(file);
+  });
+  editor.addEventListener('pointerdown', (event) => {
+    const watermark = event.target.closest('[data-watermark]');
+    if (event.button !== 0 || !watermark || !editor.contains(watermark)) return;
+    event.preventDefault();
+    showWatermarkToolbar(watermark);
+    const pageBounds = editor.getBoundingClientRect();
+    const watermarkBounds = watermark.getBoundingClientRect();
+    const scaleX = pageBounds.width / editor.offsetWidth;
+    const scaleY = pageBounds.height / editor.offsetHeight;
+    watermarkDrag = {
+      watermark,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: (watermarkBounds.left - pageBounds.left) / scaleX,
+      top: (watermarkBounds.top - pageBounds.top) / scaleY,
+      scaleX,
+      scaleY,
+      moved: false
+    };
+  });
+  watermarkManipulators.addEventListener('pointerdown', (event) => {
+    const handle = event.target.closest('[data-watermark-resize-corner]');
+    if (!handle || !activeWatermark || !editor.contains(activeWatermark)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pageBounds = editor.getBoundingClientRect();
+    const bounds = activeWatermark.getBoundingClientRect();
+    const scaleX = pageBounds.width / editor.offsetWidth;
+    const scaleY = pageBounds.height / editor.offsetHeight;
+    const width = bounds.width / scaleX;
+    const height = bounds.height / scaleY;
+    const fontSize = Number.parseFloat(getComputedStyle(activeWatermark).fontSize);
+    watermarkResizeDrag = {
+      watermark: activeWatermark,
+      pointerId: event.pointerId,
+      corner: handle.dataset.watermarkResizeCorner,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: (bounds.left - pageBounds.left) / scaleX,
+      top: (bounds.top - pageBounds.top) / scaleY,
+      width,
+      height,
+      aspect: width / height,
+      fontSize,
+      scaleX,
+      scaleY,
+      pageWidth: editor.offsetWidth,
+      pageHeight: editor.offsetHeight,
+      minWidth: activeWatermark.matches('img') ? 40 : width * 12 / fontSize
+    };
+  });
+  document.addEventListener('pointermove', (event) => {
+    if (watermarkDrag && watermarkDrag.pointerId === event.pointerId) {
+      const drag = watermarkDrag;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+      drag.moved = true;
+      event.preventDefault();
+      const bounds = drag.watermark.getBoundingClientRect();
+      drag.watermark.style.left = `${Math.max(0, Math.min(editor.offsetWidth - bounds.width / drag.scaleX,
+        drag.left + dx / drag.scaleX))}px`;
+      drag.watermark.style.top = `${Math.max(0, Math.min(editor.offsetHeight - bounds.height / drag.scaleY,
+        drag.top + dy / drag.scaleY))}px`;
+      refreshWatermarkManipulators(drag.watermark);
+      positionContextToolbar(watermarkToolbar, drag.watermark.getBoundingClientRect());
+      return;
+    }
+    if (!watermarkResizeDrag || watermarkResizeDrag.pointerId !== event.pointerId) return;
+    const drag = watermarkResizeDrag;
+    const signX = drag.corner.endsWith('e') ? 1 : -1;
+    const signY = drag.corner.startsWith('s') ? 1 : -1;
+    const dx = (event.clientX - drag.startX) / drag.scaleX * signX;
+    const dy = (event.clientY - drag.startY) / drag.scaleY * signY;
+    const widthChange = (dx + dy / drag.aspect) / (1 + 1 / (drag.aspect * drag.aspect));
+    const isWest = drag.corner.endsWith('w');
+    const isNorth = drag.corner.startsWith('n');
+    const maxWidth = Math.min(2000,
+      isWest ? drag.left + drag.width : drag.pageWidth - drag.left,
+      (isNorth ? drag.top + drag.height : drag.pageHeight - drag.top) * drag.aspect);
+    const width = Math.max(Math.min(drag.minWidth, maxWidth),
+      Math.min(maxWidth, drag.width + widthChange));
+    const left = isWest ? drag.left + drag.width - width : drag.left;
+    const top = isNorth ? drag.top + drag.height - width / drag.aspect : drag.top;
+    if (drag.watermark.matches('img')) {
+      drag.watermark.width = Math.round(width);
+      document.getElementById('watermark-edit-width').value = String(Math.round(width));
+      document.getElementById('watermark-edit-width-value').value = `${Math.round(width)}px`;
+    } else {
+      drag.watermark.style.fontSize = `${(Math.round(drag.fontSize * width / drag.width * 100) / 100)}px`;
+    }
+    drag.watermark.style.left = `${Math.max(0, left)}px`;
+    drag.watermark.style.top = `${Math.max(0, top)}px`;
+    refreshWatermarkManipulators(drag.watermark);
+    positionContextToolbar(watermarkToolbar, drag.watermark.getBoundingClientRect());
+    event.preventDefault();
+  });
+  const finishWatermarkDrag = (event) => {
+    if (watermarkDrag && watermarkDrag.pointerId === event.pointerId) {
+      if (watermarkDrag.moved) scheduleSave();
+      watermarkDrag = null;
+    }
+    if (watermarkResizeDrag && watermarkResizeDrag.pointerId === event.pointerId) {
+      watermarkResizeDrag = null;
+      scheduleSave();
+    }
+  };
+  document.addEventListener('pointerup', finishWatermarkDrag);
+  document.addEventListener('pointercancel', finishWatermarkDrag);
+  document.getElementById('watermark-edit-text').addEventListener('input', (event) => {
+    if (!activeWatermark || activeWatermark.dataset.watermark !== 'text') return;
+    activeWatermark.textContent = event.currentTarget.value;
+    activeWatermark.dir = getWatermarkDirection(event.currentTarget.value);
+    activeWatermark.lang = activeWatermark.dir === 'rtl' ? 'ur' : 'en';
+    applyWatermarkTextDirection(event.currentTarget, activeWatermark.dir);
+    refreshWatermarkManipulators(activeWatermark);
+    scheduleSave();
+  });
+  document.getElementById('watermark-edit-opacity').addEventListener('input', (event) => {
+    if (!activeWatermark || !editor.contains(activeWatermark)) return;
+    const opacity = (Number(event.currentTarget.value) / 100).toFixed(2);
+    activeWatermark.dataset.watermarkOpacity = opacity;
+    activeWatermark.style.opacity = opacity;
+    refreshWatermarkManipulators(activeWatermark);
+    document.getElementById('watermark-edit-opacity-value').value = `${event.currentTarget.value}%`;
+    scheduleSave();
+  });
+  document.getElementById('watermark-edit-width').addEventListener('input', (event) => {
+    if (!activeWatermark || !activeWatermark.matches('img')) return;
+    activeWatermark.width = Number(event.currentTarget.value);
+    document.getElementById('watermark-edit-width-value').value = `${event.currentTarget.value}px`;
+    refreshWatermarkManipulators(activeWatermark);
+    positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
+    scheduleSave();
+  });
+  const removeSelectedWatermark = () => {
+    if (activeWatermark && editor.contains(activeWatermark)) activeWatermark.remove();
+    activeWatermark = null;
+    watermarkManipulators.hidden = true;
+    watermarkManipulators.replaceChildren();
+    watermarkToolbar.hidden = true;
+    scheduleSave();
+  };
+  document.getElementById('watermark-delete').addEventListener('click', removeSelectedWatermark);
   const updateTableToolbar = (cell) => {
     activeTableCell = cell;
     tableToolbar.hidden = !cell;
@@ -2019,11 +2737,11 @@
     syncTableDesignControls(table);
     document.getElementById('table-cell-align').value = cell.style.textAlign || 'right';
     const savedWidth = table.style.width || table.getAttribute('width') || '';
-    const parsedWidth = Number.parseInt(savedWidth, 10);
     const availableWidth = Math.max(1,
       editor.clientWidth - parseFloat(getComputedStyle(editor).paddingLeft) - parseFloat(getComputedStyle(editor).paddingRight));
-    const tableWidth = Number.isFinite(parsedWidth)
-      ? Math.max(10, Math.min(100, parsedWidth))
+    const percentageWidth = /^(\d+(?:\.\d+)?)%$/.exec(savedWidth);
+    const tableWidth = percentageWidth
+      ? Math.max(10, Math.min(100, Math.round(Number(percentageWidth[1]))))
       : Math.max(10, Math.min(100, Math.round(table.getBoundingClientRect().width / availableWidth * 100)));
     document.getElementById('table-width').value = String(tableWidth);
     document.getElementById('table-width-value').value = `${tableWidth}%`;
@@ -2041,26 +2759,481 @@
     positionTableToolbar(cell);
     refreshTableManipulators(table);
   };
+  const readImageCrop = (image) => (image.dataset.imageCrop || '0,0,0,0').split(',').map(Number);
+  const applyImageCrop = (image, insets) => {
+    const safeInsets = insets.map((inset) => Math.max(0, Math.min(45, Math.round(inset))));
+    image.dataset.imageCrop = safeInsets.join(',');
+    image.style.clipPath = `inset(${safeInsets[0]}% ${safeInsets[1]}% ${safeInsets[2]}% ${safeInsets[3]}%)`;
+    document.getElementById('image-crop-reset').hidden = safeInsets.every((inset) => inset === 0);
+  };
+  const setImageRotation = (image, angle) => {
+    const rotation = (Math.round(angle) % 360 + 360) % 360;
+    image.dataset.imageRotation = String(rotation);
+    image.style.rotate = `${rotation}deg`;
+    imageRotationIndicator.textContent = `${rotation}°`;
+    imageRotationIndicator.hidden = false;
+    const point = getImageHandlePoint(image, 0, -image.offsetHeight / 2 - 30);
+    imageRotationIndicator.style.left = `${point.left}px`;
+    imageRotationIndicator.style.top = `${point.top}px`;
+  };
+  const getImageHandlePoint = (image, x, y) => {
+    const bounds = image.getBoundingClientRect();
+    const pageBounds = editor.getBoundingClientRect();
+    const scaleX = pageBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    const width = image.offsetWidth;
+    const height = image.offsetHeight;
+    const centerX = (bounds.left + bounds.right) / 2;
+    const centerY = (bounds.top + bounds.bottom) / 2;
+    const rotation = (Number(image.dataset.imageRotation) || 0) * Math.PI / 180;
+    return {
+      left: centerX + x * scaleX * Math.cos(rotation) - y * scaleY * Math.sin(rotation),
+      top: centerY + x * scaleX * Math.sin(rotation) + y * scaleY * Math.cos(rotation),
+      width,
+      height,
+      scaleX,
+      scaleY,
+      rotation
+    };
+  };
+  const refreshImageManipulators = (image) => {
+    imageManipulators.replaceChildren();
+    imageManipulators.hidden = !image || !editor.contains(image);
+    if (imageManipulators.hidden) return;
+    const frame = getImageHandlePoint(image, 0, 0);
+    const [cropTop, cropRight, cropBottom, cropLeft] = readImageCrop(image);
+    const left = -frame.width / 2 + frame.width * cropLeft / 100;
+    const right = frame.width / 2 - frame.width * cropRight / 100;
+    const top = -frame.height / 2 + frame.height * cropTop / 100;
+    const bottom = frame.height / 2 - frame.height * cropBottom / 100;
+    [
+      ['nw', left, top, 'top-left'],
+      ['ne', right, top, 'top-right'],
+      ['se', right, bottom, 'bottom-right'],
+      ['sw', left, bottom, 'bottom-left'],
+      ...(imageCropMode ? [
+        ['n', (left + right) / 2, top, 'top'],
+        ['e', right, (top + bottom) / 2, 'right'],
+        ['s', (left + right) / 2, bottom, 'bottom'],
+        ['w', left, (top + bottom) / 2, 'left']
+      ] : [])
+    ].forEach(([corner, handleLeft, handleTop, label]) => {
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = `image-resize-handle image-resize-${corner}`;
+      handle.dataset.resizeCorner = corner;
+      const isMiddle = ['n', 'e', 's', 'w'].includes(corner);
+      handle.dataset.resizeAction = isMiddle ? 'crop' : 'resize';
+      handle.setAttribute('aria-label', `${isMiddle ? 'Crop' : 'Resize'} picture from ${label}`);
+      const point = getImageHandlePoint(image, handleLeft, handleTop);
+      handle.style.left = `${point.left}px`;
+      handle.style.top = `${point.top}px`;
+      imageManipulators.append(handle);
+    });
+    const rotateHandle = document.createElement('button');
+    rotateHandle.type = 'button';
+    rotateHandle.className = 'image-rotate-handle';
+    rotateHandle.dataset.rotateHandle = 'true';
+    rotateHandle.setAttribute('aria-label', 'Rotate picture');
+    rotateHandle.textContent = '↻';
+    const rotatePoint = getImageHandlePoint(image, frame.width / 2 + 26, 0);
+    rotateHandle.style.left = `${rotatePoint.left}px`;
+    rotateHandle.style.top = `${rotatePoint.top}px`;
+    imageManipulators.append(rotateHandle);
+    const optionsHandle = document.createElement('button');
+    optionsHandle.type = 'button';
+    optionsHandle.className = 'image-options-handle';
+    optionsHandle.dataset.imageOptionsHandle = 'true';
+    optionsHandle.setAttribute('aria-label', 'More picture options');
+    optionsHandle.title = 'More picture options';
+    optionsHandle.textContent = '•••';
+    const optionsPoint = getImageHandlePoint(image, -frame.width / 2 - 28, 0);
+    optionsHandle.style.left = `${optionsPoint.left}px`;
+    optionsHandle.style.top = `${optionsPoint.top}px`;
+    imageManipulators.append(optionsHandle);
+  };
+  const refreshShapeManipulators = (shape) => {
+    shapeManipulators.replaceChildren();
+    shapeManipulators.hidden = !shape || !editor.contains(shape);
+    if (shapeManipulators.hidden) return;
+    const bounds = shape.getBoundingClientRect();
+    [
+      ['nw', bounds.left, bounds.top],
+      ['ne', bounds.right, bounds.top],
+      ['se', bounds.right, bounds.bottom],
+      ['sw', bounds.left, bounds.bottom]
+    ].forEach(([corner, left, top]) => {
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = `image-resize-handle image-resize-${corner}`;
+      handle.dataset.shapeResizeCorner = corner;
+      handle.setAttribute('aria-label', `Resize shape from ${corner}`);
+      handle.style.left = `${left}px`;
+      handle.style.top = `${top}px`;
+      shapeManipulators.append(handle);
+    });
+  };
+  const showShapeToolbar = (shape) => {
+    if (activeImage) activeImage.classList.remove('image-selected', 'image-crop-active');
+    activeImage = null;
+    imageCropMode = false;
+    imageToolbar.hidden = true;
+    imageManipulators.hidden = true;
+    imageManipulators.replaceChildren();
+    if (activeWatermark) activeWatermark.classList.remove('watermark-selected');
+    activeWatermark = null;
+    watermarkToolbar.hidden = true;
+    watermarkManipulators.hidden = true;
+    watermarkManipulators.replaceChildren();
+    tableToolbar.hidden = true;
+    activeTable = null;
+    activeTableCell = null;
+    document.body.classList.remove('table-tools-open');
+    tableManipulators.replaceChildren();
+    if (activeShape && activeShape !== shape) activeShape.classList.remove('shape-selected');
+    activeShape = shape;
+    activeShape.classList.add('shape-selected');
+    shapeToolbar.hidden = false;
+    document.getElementById('shape-fill-color').value = shape.dataset.shapeFill || '#176b9a';
+    positionContextToolbar(shapeToolbar, shape.getBoundingClientRect());
+    refreshShapeManipulators(shape);
+  };
+  let shapeResizeDrag = null;
+  shapeManipulators.addEventListener('pointerdown', (event) => {
+    const handle = event.target.closest('[data-shape-resize-corner]');
+    if (!handle || !activeShape || !editor.contains(activeShape)) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    const bounds = activeShape.getBoundingClientRect();
+    const pageScale = editor.getBoundingClientRect().width / Math.max(editor.offsetWidth, 1);
+    shapeResizeDrag = {
+      pointerId: event.pointerId,
+      corner: handle.dataset.shapeResizeCorner,
+      startX: event.clientX,
+      startY: event.clientY,
+      width: activeShape.offsetWidth,
+      height: activeShape.offsetHeight,
+      scale: pageScale,
+      bounds
+    };
+  });
+  document.addEventListener('pointermove', (event) => {
+    if (!shapeResizeDrag || shapeResizeDrag.pointerId !== event.pointerId || !activeShape) return;
+    const drag = shapeResizeDrag;
+    const dx = (event.clientX - drag.startX) / drag.scale;
+    const dy = (event.clientY - drag.startY) / drag.scale;
+    const widthDelta = drag.corner.endsWith('e') ? dx : -dx;
+    const heightDelta = drag.corner.startsWith('s') ? dy : -dy;
+    activeShape.style.width = `${Math.max(20, Math.min(10000, drag.width + widthDelta))}px`;
+    activeShape.style.height = `${Math.max(20, Math.min(10000, drag.height + heightDelta))}px`;
+    refreshShapeManipulators(activeShape);
+    positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
+    event.preventDefault();
+  });
+  const finishShapeResize = (event) => {
+    if (!shapeResizeDrag || shapeResizeDrag.pointerId !== event.pointerId) return;
+    shapeResizeDrag = null;
+    if (activeShape && editor.contains(activeShape)) scheduleSave();
+  };
+  document.addEventListener('pointerup', finishShapeResize);
+  document.addEventListener('pointercancel', finishShapeResize);
+  document.getElementById('shape-fill-color').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    activeShape.dataset.shapeFill = event.currentTarget.value;
+    activeShape.style.backgroundColor = event.currentTarget.value;
+    scheduleSave();
+  });
+  document.getElementById('shape-delete').addEventListener('click', () => {
+    if (activeShape && editor.contains(activeShape)) activeShape.remove();
+    activeShape = null;
+    shapeToolbar.hidden = true;
+    shapeManipulators.hidden = true;
+    shapeManipulators.replaceChildren();
+    updateCounts();
+    scheduleSave();
+  });
+  const setImageWrap = (image, wrap) => {
+    if (wrap === 'free') {
+      const bounds = image.getBoundingClientRect();
+      const pageBounds = editor.getBoundingClientRect();
+      const scaleX = pageBounds.width / editor.offsetWidth;
+      const scaleY = pageBounds.height / editor.offsetHeight;
+      image.dataset.imageWrap = wrap;
+      image.setAttribute('width', String(Math.max(1, Math.min(10000,
+        Math.round(bounds.width / scaleX) || Number(image.getAttribute('width')) || 240))));
+      image.style.left = `${Math.max(0, (bounds.left - pageBounds.left) / scaleX)}px`;
+      image.style.top = `${Math.max(0, (bounds.top - pageBounds.top) / scaleY)}px`;
+      return;
+    }
+    image.dataset.imageWrap = wrap;
+    image.style.removeProperty('left');
+    image.style.removeProperty('top');
+  };
   const showImageToolbar = (image) => {
-    if (activeImage && activeImage !== image) activeImage.classList.remove('image-selected');
+    if (activeShape) activeShape.classList.remove('shape-selected');
+    activeShape = null;
+    shapeToolbar.hidden = true;
+    shapeManipulators.hidden = true;
+    shapeManipulators.replaceChildren();
+    if (activeWatermark) activeWatermark.classList.remove('watermark-selected');
+    activeWatermark = null;
+    watermarkToolbar.hidden = true;
+    watermarkManipulators.hidden = true;
+    watermarkManipulators.replaceChildren();
+    if (activeImage && activeImage !== image) {
+      activeImage.classList.remove('image-selected', 'image-crop-active');
+    }
     activeImage = image;
+    activeImage.classList.remove('image-crop-active');
     image.classList.add('image-selected');
     tableToolbar.hidden = true;
     activeTable = null;
     activeTableCell = null;
     document.body.classList.remove('table-tools-open');
     tableManipulators.replaceChildren();
-    imageToolbar.hidden = false;
-    const width = Number(image.getAttribute('width')) || Math.round(image.width || 240);
-    const widthInput = document.getElementById('image-width');
-    widthInput.value = String(Math.max(40, Math.min(600, width)));
-    document.getElementById('image-width-value').value = `${width}px`;
-    document.getElementById('image-wrap').value = image.dataset.imageWrap || 'inline';
-    document.getElementById('image-align').value = image.dataset.imageAlign || 'center';
-    const rect = image.getBoundingClientRect();
-    positionContextToolbar(imageToolbar, rect);
+    imageToolbar.hidden = true;
+    imageCropMode = false;
+    imageToolbar.dataset.cropMode = 'false';
+    document.getElementById('image-crop-toggle').setAttribute('aria-pressed', 'false');
+    document.getElementById('image-crop-toggle').title = 'Crop picture';
+    document.getElementById('image-crop-toggle').setAttribute('aria-label', 'Crop picture');
+    document.getElementById('image-border-color').value = image.dataset.imageBorderColor || '#176b9a';
+    document.querySelector('.image-border-color-tool > span').style.backgroundColor =
+      image.dataset.imageBorderColor || '#176b9a';
+    document.getElementById('image-border-width').value = image.dataset.imageBorderWidth || '0';
+    document.getElementById('image-border-width-value').value = `${image.dataset.imageBorderWidth || 0} px`;
+    document.getElementById('image-radius').value = image.dataset.imageRadius || '0';
+    document.getElementById('image-radius-value').value = `${image.dataset.imageRadius || 0} px`;
+    const opacity = Math.round(Number(image.dataset.imageOpacity ?? 1) * 100);
+    document.getElementById('image-opacity').value = String(opacity);
+    document.getElementById('image-opacity-value').value = `${opacity}%`;
+    applyImageCrop(image, readImageCrop(image));
+    refreshImageManipulators(image);
   };
+  let imageDrag = null;
+  let imageResizeDrag = null;
+  let imageRotateDrag = null;
+  editor.addEventListener('pointerdown', (event) => {
+    const image = event.target.closest('img');
+    if (event.button !== 0 || !image || !editor.contains(image) || image.dataset.imageWrap !== 'free') return;
+    if (image === activeImage && imageCropMode) {
+      event.preventDefault();
+      return;
+    }
+    event.preventDefault();
+    showImageToolbar(image);
+    const pageBounds = editor.getBoundingClientRect();
+    const imageBounds = image.getBoundingClientRect();
+    imageDrag = {
+      image,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: Number.isFinite(Number.parseFloat(image.style.left))
+        ? Number.parseFloat(image.style.left)
+        : (imageBounds.left - pageBounds.left) / (pageBounds.width / editor.offsetWidth),
+      top: Number.isFinite(Number.parseFloat(image.style.top))
+        ? Number.parseFloat(image.style.top)
+        : (imageBounds.top - pageBounds.top) / (pageBounds.height / editor.offsetHeight),
+      scaleX: pageBounds.width / editor.offsetWidth,
+      scaleY: pageBounds.height / editor.offsetHeight,
+      moved: false
+    };
+  });
+  imageManipulators.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('[data-image-options-handle]')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    const rotateHandle = event.target.closest('[data-rotate-handle]');
+    if (rotateHandle && activeImage && editor.contains(activeImage)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = activeImage.getBoundingClientRect();
+      imageRotateDrag = {
+        image: activeImage,
+        pointerId: event.pointerId,
+        centerX: (bounds.left + bounds.right) / 2,
+        centerY: (bounds.top + bounds.bottom) / 2,
+        lastPointerAngle: Math.atan2(event.clientY - (bounds.top + bounds.bottom) / 2,
+          event.clientX - (bounds.left + bounds.right) / 2) * 180 / Math.PI,
+        rotation: Number(activeImage.dataset.imageRotation) || 0,
+        toolbarWasHidden: imageToolbar.hidden,
+        wasSelected: activeImage.classList.contains('image-selected')
+      };
+      imageManipulators.hidden = true;
+      imageToolbar.hidden = true;
+      activeImage.classList.remove('image-selected');
+      return;
+    }
+    const handle = event.target.closest('[data-resize-corner]');
+    if (!handle || !activeImage || !editor.contains(activeImage)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const pageBounds = editor.getBoundingClientRect();
+    const imageBounds = activeImage.getBoundingClientRect();
+    const scaleX = pageBounds.width / editor.offsetWidth;
+    const scaleY = pageBounds.height / editor.offsetHeight;
+    const aspect = activeImage.naturalWidth && activeImage.naturalHeight
+      ? activeImage.naturalWidth / activeImage.naturalHeight
+      : imageBounds.width / imageBounds.height;
+    const rotation = (Number(activeImage.dataset.imageRotation) || 0) * Math.PI / 180;
+    const centerX = (imageBounds.left + imageBounds.right) / 2;
+    const centerY = (imageBounds.top + imageBounds.bottom) / 2;
+    imageResizeDrag = {
+      image: activeImage,
+      pointerId: event.pointerId,
+      corner: handle.dataset.resizeCorner,
+      crop: handle.dataset.resizeAction === 'crop',
+      startX: event.clientX,
+      startY: event.clientY,
+      width: activeImage.offsetWidth || imageBounds.width / scaleX,
+      height: activeImage.offsetHeight || imageBounds.height / scaleY,
+      left: activeImage.dataset.imageWrap === 'free' && Number.isFinite(Number.parseFloat(activeImage.style.left))
+        ? Number.parseFloat(activeImage.style.left)
+        : (centerX - pageBounds.left) / scaleX - activeImage.offsetWidth / 2,
+      top: activeImage.dataset.imageWrap === 'free' && Number.isFinite(Number.parseFloat(activeImage.style.top))
+        ? Number.parseFloat(activeImage.style.top)
+        : (centerY - pageBounds.top) / scaleY - activeImage.offsetHeight / 2,
+      pageWidth: editor.offsetWidth,
+      pageHeight: editor.offsetHeight,
+      aspect: Number.isFinite(aspect) && aspect > 0 ? aspect : 1,
+      scaleX,
+      scaleY,
+      rotation,
+      maxWidth: 10000,
+      cropInsets: readImageCrop(activeImage),
+      fixedPoint: getImageHandlePoint(activeImage,
+        handle.dataset.resizeCorner === 'nw' || handle.dataset.resizeCorner === 'sw' ? activeImage.offsetWidth / 2 : -activeImage.offsetWidth / 2,
+        handle.dataset.resizeCorner === 'nw' || handle.dataset.resizeCorner === 'ne' ? activeImage.offsetHeight / 2 : -activeImage.offsetHeight / 2)
+    };
+  });
+  imageManipulators.addEventListener('click', (event) => {
+    if (!event.target.closest('[data-image-options-handle]') || !activeImage || !editor.contains(activeImage)) return;
+    imageToolbar.hidden = !imageToolbar.hidden;
+    positionImageToolbar(activeImage.getBoundingClientRect());
+  });
+  document.addEventListener('pointermove', (event) => {
+    if (imageDrag && imageDrag.pointerId === event.pointerId) {
+      const drag = imageDrag;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+      drag.moved = true;
+      event.preventDefault();
+      const imageBounds = drag.image.getBoundingClientRect();
+      const left = Math.max(0, Math.min(editor.offsetWidth - imageBounds.width / drag.scaleX,
+        drag.left + dx / drag.scaleX));
+      const top = Math.max(0, Math.min(editor.offsetHeight - imageBounds.height / drag.scaleY,
+        drag.top + dy / drag.scaleY));
+      drag.image.style.left = `${left}px`;
+      drag.image.style.top = `${top}px`;
+      refreshImageManipulators(drag.image);
+      positionImageToolbar(drag.image.getBoundingClientRect());
+      return;
+    }
+    if (imageRotateDrag && imageRotateDrag.pointerId === event.pointerId) {
+      const drag = imageRotateDrag;
+      const angle = Math.atan2(event.clientY - drag.centerY, event.clientX - drag.centerX) * 180 / Math.PI;
+      let delta = angle - drag.lastPointerAngle;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      drag.rotation += delta;
+      drag.lastPointerAngle = angle;
+      setImageRotation(drag.image, drag.rotation);
+      event.preventDefault();
+      return;
+    }
+    if (!imageResizeDrag || imageResizeDrag.pointerId !== event.pointerId) return;
+    const drag = imageResizeDrag;
+    const screenDeltaX = event.clientX - drag.startX;
+    const screenDeltaY = event.clientY - drag.startY;
+    const deltaX = (screenDeltaX * Math.cos(drag.rotation) + screenDeltaY * Math.sin(drag.rotation)) / drag.scaleX;
+    const deltaY = (-screenDeltaX * Math.sin(drag.rotation) + screenDeltaY * Math.cos(drag.rotation)) / drag.scaleY;
+    const dx = drag.corner.endsWith('e') ? deltaX : drag.corner.endsWith('w') ? -deltaX : 0;
+    const dy = drag.corner.startsWith('s') ? deltaY : drag.corner.startsWith('n') ? -deltaY : 0;
+    if (drag.crop) {
+      const [startTop, startRight, startBottom, startLeft] = drag.cropInsets;
+      const width = Math.max(1, drag.width);
+      const height = Math.max(1, drag.height);
+      const insets = [startTop, startRight, startBottom, startLeft];
+      if (drag.corner.startsWith('n')) insets[0] = startTop + deltaY / height * 100;
+      if (drag.corner.endsWith('e')) insets[1] = startRight - deltaX / width * 100;
+      if (drag.corner.startsWith('s')) insets[2] = startBottom - deltaY / height * 100;
+      if (drag.corner.endsWith('w')) insets[3] = startLeft + deltaX / width * 100;
+      insets[0] = Math.max(0, Math.min(45, insets[0]));
+      insets[1] = Math.max(0, Math.min(45, insets[1]));
+      insets[2] = Math.max(0, Math.min(89 - insets[0], insets[2]));
+      insets[3] = Math.max(0, Math.min(89 - insets[1], insets[3]));
+      applyImageCrop(drag.image, insets);
+      refreshImageManipulators(drag.image);
+      event.preventDefault();
+      return;
+    }
+    const aspect = Number.isFinite(drag.aspect) && drag.aspect > 0 ? drag.aspect : 1;
+    let widthChange;
+    if (drag.corner === 'e' || drag.corner === 'w') widthChange = dx;
+    else if (drag.corner === 'n' || drag.corner === 's') widthChange = dy * aspect;
+    else widthChange = (dx + dy / aspect) / (1 + 1 / (aspect * aspect));
+    const isWest = drag.corner.endsWith('w');
+    const isNorth = drag.corner.startsWith('n');
+    const maxWidth = drag.maxWidth;
+    const width = Math.max(1, Math.min(maxWidth, drag.width + widthChange));
+    const height = width / aspect;
+    drag.image.setAttribute('width', String(Math.round(width)));
+    if (drag.image.dataset.imageWrap === 'free') {
+      const pageBounds = editor.getBoundingClientRect();
+      const anchorX = (isWest ? 1 : -1) * width / 2;
+      const anchorY = (isNorth ? 1 : -1) * height / 2;
+      const fixedX = drag.fixedPoint.left - (
+        anchorX * drag.scaleX * Math.cos(drag.rotation) - anchorY * drag.scaleY * Math.sin(drag.rotation));
+      const fixedY = drag.fixedPoint.top - (
+        anchorX * drag.scaleX * Math.sin(drag.rotation) + anchorY * drag.scaleY * Math.cos(drag.rotation));
+      const left = (fixedX - pageBounds.left) / drag.scaleX - width / 2;
+      const top = (fixedY - pageBounds.top) / drag.scaleY - height / 2;
+      drag.image.style.left = `${Math.max(-10000, Math.min(drag.pageWidth, left))}px`;
+      drag.image.style.top = `${Math.max(-10000, Math.min(drag.pageHeight, top))}px`;
+    }
+    refreshImageManipulators(drag.image);
+    positionImageToolbar(drag.image.getBoundingClientRect());
+    event.preventDefault();
+  });
+  const finishImagePointer = (event) => {
+    if (imageDrag && imageDrag.pointerId === event.pointerId) {
+      if (imageDrag.moved) scheduleSave();
+      imageDrag = null;
+    }
+    if (imageRotateDrag && imageRotateDrag.pointerId === event.pointerId) {
+      const drag = imageRotateDrag;
+      imageRotateDrag = null;
+      imageManipulators.hidden = false;
+      imageToolbar.hidden = drag.toolbarWasHidden;
+      if (drag.wasSelected) drag.image.classList.add('image-selected');
+      imageRotationIndicator.hidden = true;
+      refreshImageManipulators(drag.image);
+      if (!imageToolbar.hidden) positionImageToolbar(drag.image.getBoundingClientRect());
+      scheduleSave();
+    }
+    if (imageResizeDrag && imageResizeDrag.pointerId === event.pointerId) {
+      imageResizeDrag = null;
+      scheduleSave();
+    }
+  };
+  document.addEventListener('pointerup', finishImagePointer);
+  document.addEventListener('pointercancel', finishImagePointer);
   editor.addEventListener('click', (event) => {
+    const shape = event.target.closest('.editor-shape');
+    if (shape && editor.contains(shape)) {
+      event.preventDefault();
+      showShapeToolbar(shape);
+      return;
+    }
+    const watermark = event.target.closest('[data-watermark]');
+    if (watermark && editor.contains(watermark)) {
+      showWatermarkToolbar(watermark);
+      return;
+    }
     const image = event.target.closest('img');
     if (document.body.classList.contains('select-objects-mode')) {
       const target = event.target.closest('table, img, p, h1, h2, h3, li, blockquote, [data-document-region]');
@@ -2075,12 +3248,25 @@
       }
     }
     if (image && editor.contains(image)) {
+      if (image === activeImage && imageCropMode) return;
       showImageToolbar(image);
       return;
     }
-    if (activeImage) activeImage.classList.remove('image-selected');
+    if (activeImage) activeImage.classList.remove('image-selected', 'image-crop-active');
     activeImage = null;
+    if (activeShape) activeShape.classList.remove('shape-selected');
+    activeShape = null;
+    shapeToolbar.hidden = true;
+    shapeManipulators.hidden = true;
+    shapeManipulators.replaceChildren();
+    imageCropMode = false;
     imageToolbar.hidden = true;
+    imageManipulators.hidden = true;
+    if (activeWatermark) activeWatermark.classList.remove('watermark-selected');
+    activeWatermark = null;
+    watermarkManipulators.hidden = true;
+    watermarkManipulators.replaceChildren();
+    watermarkToolbar.hidden = true;
     const cell = event.target.closest('td, th');
     if (!cell && selectedTableBand) return;
     updateTableToolbar(cell && editor.contains(cell) ? cell : null);
@@ -2090,6 +3276,17 @@
         document.querySelector('.tab-button[data-tab="home"]').click();
       }
     }
+  });
+  document.addEventListener('click', (event) => {
+    if (!imageCropMode || !activeImage) return;
+    if (event.target.closest('#editor img, #image-context-toolbar, #image-manipulators')) return;
+    activeImage.classList.remove('image-selected', 'image-crop-active');
+    activeImage = null;
+    imageCropMode = false;
+    imageToolbar.dataset.cropMode = 'false';
+    imageToolbar.hidden = true;
+    imageManipulators.hidden = true;
+    imageManipulators.replaceChildren();
   });
   editor.addEventListener('dblclick', (event) => {
     if (event.button !== 0) return;
@@ -2290,6 +3487,15 @@
     grips[0].style.top = `${bounds.top - 20}px`;
 
     const firstRow = table.rows[0];
+    if (firstRow && firstRow.cells.length) {
+      ['left', 'right'].forEach((side) => {
+        const grip = makeTableGrip(`${side}-edge`, 0, 'table-edge-grip', `Resize table ${side} edge`);
+        grip.style.left = `${side === 'left' ? bounds.left : bounds.right}px`;
+        grip.style.top = `${bounds.top}px`;
+        grip.style.height = `${bounds.height}px`;
+        grips.push(grip);
+      });
+    }
     if (firstRow && firstRow.cells.length > 1) {
       for (let index = 0; index < firstRow.cells.length - 1; index += 1) {
         const first = firstRow.cells[index].getBoundingClientRect();
@@ -2518,10 +3724,44 @@
       firstColumnWidth = first.width;
       secondColumnWidth = second.width;
     }
+    const isEdgeResize = kind === 'left-edge' || kind === 'right-edge';
+    const edgeCells = isEdgeResize
+      ? rows.map((tableRow) => {
+        const cells = Array.from(tableRow.cells);
+        return cells.reduce((edge, cell) => {
+          if (!edge) return cell;
+          const cellBounds = cell.getBoundingClientRect();
+          const edgeBounds = edge.getBoundingClientRect();
+          return kind === 'left-edge'
+            ? cellBounds.left < edgeBounds.left ? cell : edge
+            : cellBounds.right > edgeBounds.right ? cell : edge;
+        }, null);
+      })
+      : [];
+    const isFreeMove = kind === 'move';
+    const moveTableBounds = isFreeMove ? table.getBoundingClientRect() : null;
+    const movePageBounds = isFreeMove ? editor.getBoundingClientRect() : null;
+    const moveScaleX = isFreeMove ? movePageBounds.width / editor.offsetWidth : 1;
+    const moveScaleY = isFreeMove ? movePageBounds.height / editor.offsetHeight : 1;
     tableDrag = {
       kind, index, table, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
       rowBounds, firstColumnWidth, secondColumnWidth,
-      rowHeight: rowBounds ? rowBounds.height : 0
+      rowHeight: rowBounds ? rowBounds.height : 0,
+      tableBounds: isEdgeResize ? table.getBoundingClientRect() : null,
+      pageBounds: isEdgeResize ? editor.getBoundingClientRect() : null,
+      originalMarginLeft: isEdgeResize ? Number.parseFloat(getComputedStyle(table).marginLeft) : 0,
+      originalMarginRight: isEdgeResize ? Number.parseFloat(getComputedStyle(table).marginRight) : 0,
+      edgeCells: edgeCells.map((cell) => ({ cell, width: cell.getBoundingClientRect().width })),
+      freeMove: isFreeMove ? {
+        left: (moveTableBounds.left - movePageBounds.left) / moveScaleX,
+        top: (moveTableBounds.top - movePageBounds.top) / moveScaleY,
+        width: moveTableBounds.width / moveScaleX,
+        height: moveTableBounds.height / moveScaleY,
+        pageWidth: editor.offsetWidth,
+        pageHeight: editor.offsetHeight,
+        scaleX: moveScaleX,
+        scaleY: moveScaleY
+      } : null
     };
   });
   document.addEventListener('pointermove', (event) => {
@@ -2537,7 +3777,38 @@
     }
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
-    if (kind === 'column') {
+    if (kind === 'move') {
+      const { freeMove } = tableDrag;
+      if (!freeMove) return;
+      event.preventDefault();
+      table.dataset.tablePosition = 'free';
+      table.style.width = `${freeMove.width}px`;
+      table.style.left = `${Math.max(0, Math.min(freeMove.pageWidth - freeMove.width,
+        freeMove.left + dx / freeMove.scaleX))}px`;
+      table.style.top = `${Math.max(0, Math.min(freeMove.pageHeight - freeMove.height,
+        freeMove.top + dy / freeMove.scaleY))}px`;
+    } else if (kind === 'left-edge' || kind === 'right-edge') {
+      const { tableBounds, pageBounds, originalMarginLeft, originalMarginRight, edgeCells } = tableDrag;
+      if (!tableBounds || !pageBounds) return;
+      const edgeDelta = kind === 'left-edge' ? -dx : dx;
+      const minimumDelta = Math.max(...edgeCells.map(({ width }) => 32 - width));
+      const maximumDelta = kind === 'left-edge'
+        ? tableBounds.left - pageBounds.left
+        : pageBounds.right - tableBounds.right;
+      const delta = Math.max(minimumDelta, Math.min(maximumDelta, edgeDelta));
+      table.style.tableLayout = 'fixed';
+      table.style.width = `${tableBounds.width + delta}px`;
+      if (kind === 'left-edge') {
+        table.style.marginLeft = `${originalMarginLeft - delta}px`;
+        table.style.marginRight = `${originalMarginRight}px`;
+      } else {
+        table.style.marginLeft = `${originalMarginLeft}px`;
+        table.style.marginRight = `${originalMarginRight - delta}px`;
+      }
+      edgeCells.forEach(({ cell, width }) => {
+        cell.style.width = `${width + delta}px`;
+      });
+    } else if (kind === 'column') {
       const first = table.rows[0].cells[index];
       const second = table.rows[0].cells[index + 1];
       if (!first || !second) return;
@@ -2564,58 +3835,6 @@
       const rowHeight = Math.max(MIN_TABLE_ROW_HEIGHT, tableDrag.rowHeight + dy);
       row.style.height = `${rowHeight}px`;
       Array.from(row.cells).forEach((cell) => { cell.style.height = `${rowHeight}px`; });
-    } else if (kind === 'move') {
-      const pageBounds = editor.getBoundingClientRect();
-      const x = Math.max(pageBounds.left, Math.min(pageBounds.right, event.clientX));
-      const y = Math.max(pageBounds.top, Math.min(pageBounds.bottom, event.clientY));
-      const pointElement = document.elementFromPoint(x, y);
-      const range = document.caretRangeFromPoint
-        ? document.caretRangeFromPoint(x, y)
-        : (() => {
-          const position = document.caretPositionFromPoint && document.caretPositionFromPoint(x, y);
-          if (!position) return null;
-          const caret = document.createRange();
-          caret.setStart(position.offsetNode, position.offset);
-          return caret;
-        })();
-      const target = pointElement && editor.contains(pointElement)
-        ? pointElement
-        : range && (range.startContainer.nodeType === Node.ELEMENT_NODE
-        ? range.startContainer
-        : range.startContainer.parentElement);
-      let reference = target && target.closest('p, h1, h2, h3, ul, ol, blockquote, table');
-      if (reference === table) {
-        const neighbors = Array.from(editor.children).filter((child) =>
-          child !== table && !child.matches('[data-document-region]'));
-        reference = neighbors.find((child) => {
-          const rect = child.getBoundingClientRect();
-          return y < rect.top + rect.height / 2;
-        }) || neighbors[neighbors.length - 1] || null;
-        if (reference) {
-          const rect = reference.getBoundingClientRect();
-          editor.insertBefore(table, y < rect.top + rect.height / 2 ? reference : reference.nextSibling);
-        } else {
-          editor.append(table);
-        }
-      } else if (reference && editor.contains(reference)) {
-        let topLevel = reference;
-        while (topLevel.parentElement && topLevel.parentElement !== editor) topLevel = topLevel.parentElement;
-        const rect = reference.getBoundingClientRect();
-        editor.insertBefore(table, y < rect.top + rect.height / 2 ? topLevel : topLevel.nextSibling);
-      } else if (target === editor || (target && editor.contains(target) && !target.closest('[data-document-region]'))) {
-        let topLevel = target === editor ? null : target;
-        while (topLevel && topLevel.parentElement && topLevel.parentElement !== editor) topLevel = topLevel.parentElement;
-        if (topLevel && topLevel !== table) {
-          const rect = topLevel.getBoundingClientRect();
-          editor.insertBefore(table, y < rect.top + rect.height / 2 ? topLevel : topLevel.nextSibling);
-        } else if (!topLevel) {
-          const nextBlock = Array.from(editor.children).find((child) => {
-            const rect = child.getBoundingClientRect();
-            return rect.top >= y && child !== table;
-          });
-          editor.insertBefore(table, nextBlock || null);
-        }
-      }
     }
     if (kind !== 'row-reorder' && kind !== 'column-reorder') refreshTableManipulators(table);
     positionTableToolbar(activeTableCell || table.querySelector('td, th'));
@@ -2682,13 +3901,38 @@
     if (changed) scheduleSave();
   });
   window.addEventListener('resize', () => {
+    if (activeShape && editor.contains(activeShape) && !shapeToolbar.hidden) {
+      refreshShapeManipulators(activeShape);
+      positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
+    }
     if (activeTable) refreshTableManipulators(activeTable);
     if (activeTableCell && !tableToolbar.hidden) positionTableToolbar(activeTableCell);
+    if (activeImage && editor.contains(activeImage) && !imageRotateDrag) {
+      refreshImageManipulators(activeImage);
+      if (!imageToolbar.hidden) positionImageToolbar(activeImage.getBoundingClientRect());
+    }
+    if (activeWatermark && editor.contains(activeWatermark) && !watermarkToolbar.hidden) {
+      refreshWatermarkManipulators(activeWatermark);
+      positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
+    }
   });
   document.addEventListener('scroll', () => {
+    syncVerticalRuler();
+    if (activeShape && editor.contains(activeShape) && !shapeToolbar.hidden) {
+      refreshShapeManipulators(activeShape);
+      positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
+    }
     if (activeTable) refreshTableManipulators(activeTable);
+    if (activeImage && editor.contains(activeImage) && !imageRotateDrag) {
+      refreshImageManipulators(activeImage);
+      if (!imageToolbar.hidden) positionImageToolbar(activeImage.getBoundingClientRect());
+    }
+    if (activeWatermark && editor.contains(activeWatermark) && !watermarkToolbar.hidden) {
+      refreshWatermarkManipulators(activeWatermark);
+      positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
+    }
   }, true);
-  [tableToolbar, imageToolbar, tableLayoutPanel].forEach((toolbar) => {
+  [tableToolbar, imageToolbar, watermarkToolbar, tableLayoutPanel].forEach((toolbar) => {
     toolbar.addEventListener('pointerdown', (event) => {
       rememberEditorSelection();
       if (event.target.closest('button')) event.preventDefault();
@@ -2971,6 +4215,8 @@
     const table = getActiveTable();
     if (!table) return;
     table.dataset.tableAlign = event.currentTarget.value;
+    table.style.marginLeft = '';
+    table.style.marginRight = '';
     scheduleSave();
   });
   document.getElementById('table-autofit').addEventListener('change', (event) => {
@@ -2978,6 +4224,8 @@
     if (!table) return;
     const mode = event.currentTarget.value;
     table.dataset.tableAutofit = mode;
+    table.style.marginLeft = '';
+    table.style.marginRight = '';
     if (mode === 'window') {
       table.style.width = '100%';
       table.style.tableLayout = 'auto';
@@ -3022,6 +4270,8 @@
     if (!table) return;
     table.setAttribute('width', `${event.currentTarget.value}%`);
     table.style.width = `${event.currentTarget.value}%`;
+    table.style.marginLeft = '';
+    table.style.marginRight = '';
     document.getElementById('table-width-value').value = `${event.currentTarget.value}%`;
     scheduleSave();
   });
@@ -3044,29 +4294,95 @@
     picker.querySelector('input[type="color"]').value = event.currentTarget.value;
     scheduleSave();
   });
-  document.getElementById('image-width').addEventListener('input', (event) => {
+  document.getElementById('image-crop-toggle').addEventListener('click', (event) => {
     if (!activeImage || !editor.contains(activeImage)) return;
-    activeImage.setAttribute('width', event.currentTarget.value);
-    document.getElementById('image-width-value').value = `${event.currentTarget.value}px`;
+    imageCropMode = !imageCropMode;
+    imageToolbar.dataset.cropMode = String(imageCropMode);
+    event.currentTarget.setAttribute('aria-pressed', String(imageCropMode));
+    event.currentTarget.title = imageCropMode ? 'Finish cropping' : 'Crop picture';
+    event.currentTarget.setAttribute('aria-label', imageCropMode ? 'Finish cropping' : 'Crop picture');
+    activeImage.classList.toggle('image-crop-active', imageCropMode);
+    refreshImageManipulators(activeImage);
+  });
+  document.getElementById('image-crop-reset').addEventListener('click', () => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    applyImageCrop(activeImage, [0, 0, 0, 0]);
+    refreshImageManipulators(activeImage);
     scheduleSave();
   });
-  document.getElementById('image-wrap').addEventListener('change', (event) => {
+  document.getElementById('image-border-color').addEventListener('input', (event) => {
     if (!activeImage || !editor.contains(activeImage)) return;
-    activeImage.dataset.imageWrap = event.currentTarget.value;
+    activeImage.dataset.imageBorderColor = event.currentTarget.value;
+    const borderWidth = Number(activeImage.dataset.imageBorderWidth || 0);
+    activeImage.style.border = borderWidth
+      ? `${borderWidth}px solid ${event.currentTarget.value}`
+      : 'none';
     scheduleSave();
   });
-  document.getElementById('image-align').addEventListener('change', (event) => {
+  document.getElementById('image-border-width').addEventListener('input', (event) => {
     if (!activeImage || !editor.contains(activeImage)) return;
-    activeImage.dataset.imageAlign = event.currentTarget.value;
+    const width = Number(event.currentTarget.value);
+    activeImage.dataset.imageBorderWidth = String(width);
+    activeImage.style.border = width
+      ? `${width}px solid ${activeImage.dataset.imageBorderColor || '#176b9a'}`
+      : 'none';
+    document.getElementById('image-border-width-value').value = `${width} px`;
+    scheduleSave();
+  });
+  document.getElementById('image-radius').addEventListener('input', (event) => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    const radius = Number(event.currentTarget.value);
+    activeImage.dataset.imageRadius = String(radius);
+    activeImage.style.borderRadius = `${radius}px`;
+    document.getElementById('image-radius-value').value = `${radius} px`;
+    scheduleSave();
+  });
+  document.getElementById('image-opacity').addEventListener('input', (event) => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    const opacity = (Number(event.currentTarget.value) / 100).toFixed(2);
+    activeImage.dataset.imageOpacity = opacity;
+    activeImage.style.opacity = opacity;
+    document.getElementById('image-opacity-value').value = `${event.currentTarget.value}%`;
     scheduleSave();
   });
   document.getElementById('image-delete').addEventListener('click', () => {
     if (activeImage && editor.contains(activeImage)) activeImage.remove();
     activeImage = null;
     imageToolbar.hidden = true;
+    imageManipulators.hidden = true;
     scheduleSave();
     updateCounts();
   });
+  let copiedImage = null;
+  let imageCutPending = false;
+  const removeSelectedImage = () => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    activeImage.remove();
+    activeImage = null;
+    imageToolbar.hidden = true;
+    imageManipulators.hidden = true;
+    imageManipulators.replaceChildren();
+    scheduleSave();
+    updateCounts();
+  };
+  const pasteCopiedImage = () => {
+    if (!copiedImage) return false;
+    const image = copiedImage.cloneNode(true);
+    if (image.dataset.imageWrap === 'free') {
+      image.style.left = `${(Number.parseFloat(image.style.left) || 0) + 20}px`;
+      image.style.top = `${(Number.parseFloat(image.style.top) || 0) + 20}px`;
+      editor.append(image);
+    } else if (activeImage && editor.contains(activeImage)) {
+      activeImage.insertAdjacentElement('afterend', image);
+    } else {
+      editor.append(image);
+    }
+    showImageToolbar(image);
+    imageCutPending = false;
+    scheduleSave();
+    updateCounts();
+    return true;
+  };
   const previewDialog = document.getElementById('document-preview');
   const previewPages = document.getElementById('preview-pages');
   function openDocumentPreview() {
@@ -3085,62 +4401,6 @@
   document.getElementById('focus-toggle').addEventListener('click', openDocumentPreview);
   document.getElementById('view-focus-toggle').addEventListener('click', openDocumentPreview);
   document.getElementById('print-button').addEventListener('click', () => window.print());
-  const romanUrduLetters = Object.freeze({
-    ا: 'a', آ: 'aa', ب: 'b', پ: 'p', ت: 't', ٹ: 'ṭ', ث: 's', ج: 'j', چ: 'ch',
-    ح: 'ḥ', خ: 'kh', د: 'd', ڈ: 'ḍ', ذ: 'z', ر: 'r', ڑ: 'ṛ', ز: 'z', ژ: 'zh',
-    س: 's', ش: 'sh', ص: 's', ض: 'z', ط: 't', ظ: 'z', ع: "'", غ: 'gh', ف: 'f',
-    ق: 'q', ک: 'k', گ: 'g', ل: 'l', م: 'm', ن: 'n', ں: 'n', و: 'o', ہ: 'h',
-    ھ: 'h', ء: "'", ی: 'i', ے: 'e', ئ: 'e', ؤ: 'o', ۓ: 'e', '،': ',', '۔': '.',
-    '؟': '?', '؛': ';', 'َ': 'a', 'ِ': 'i', 'ُ': 'u', 'ٰ': 'a', 'ّ': ''
-  });
-  const romanUrduWords = Object.freeze({
-    پاکستان: 'Pakistan', اردو: 'Urdu', انگریزی: 'English', 'السلام علیکم': 'Assalamu alaikum',
-    شکریہ: 'shukriya', محبت: 'mohabbat', دوست: 'dost', سلام: 'salaam', پانی: 'pani',
-    میں: 'main', آپ: 'aap', میرا: 'mera', میری: 'meri', کتاب: 'kitaab', ہے: 'hai',
-    ہیں: 'hain', کرنا: 'karna', کیا: 'kya', اور: 'aur', کے: 'ke', کی: 'ki', کا: 'ka',
-    نہیں: 'nahin', کرتا: 'karta', کرتی: 'karti', وقت: 'waqt', دنیا: 'dunya', اچھا: 'achha'
-  });
-  const transliterateUrdu = (text) => text.replace(/السلام\s+علیکم/gu, 'Assalamu alaikum')
-    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/gu,
-    (word) => romanUrduWords[word] || Array.from(word, (character) =>
-      romanUrduLetters[character] ?? character).join(''));
-  document.getElementById('convert-urdu-button').addEventListener('click', () => {
-    focusEditor();
-    const selection = window.getSelection();
-    const selectedRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
-    if (selectedRange && !selectedRange.collapsed && editor.contains(selectedRange.commonAncestorContainer)) {
-      const converted = transliterateUrdu(selectedRange.toString());
-      const span = document.createElement('span');
-      span.dir = 'ltr';
-      span.lang = 'en';
-      span.textContent = converted;
-      selectedRange.deleteContents();
-      selectedRange.insertNode(span);
-      selectedRange.setStartAfter(span);
-      selectedRange.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(selectedRange);
-    } else {
-      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
-        acceptNode: (node) => node.parentElement.closest('[contenteditable="false"], img') ||
-          !/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/u.test(node.textContent)
-          ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_ACCEPT
-      });
-      const textNodes = [];
-      while (walker.nextNode()) textNodes.push(walker.currentNode);
-      textNodes.forEach((node) => {
-        const span = document.createElement('span');
-        span.dir = 'ltr';
-        span.lang = 'en';
-        span.textContent = transliterateUrdu(node.textContent);
-        node.replaceWith(span);
-      });
-    }
-    updateCounts();
-    scheduleSave();
-    showToast('Urdu text converted to Roman Urdu.');
-  });
   document.getElementById('theme-toggle').addEventListener('click', (event) => {
     const active = document.body.classList.toggle('dark-mode');
     event.currentTarget.setAttribute('aria-pressed', String(active));
@@ -3242,7 +4502,9 @@
     const width = landscape ? portraitHeight : portraitWidth;
     const height = landscape ? portraitWidth : portraitHeight;
     editor.style.setProperty('--layout-page-width', `${width}px`);
+    editor.style.setProperty('--layout-page-height', `${height}px`);
     editor.style.minHeight = `${height}px`;
+    syncPageBreakLayout();
     editor.dataset.pageSize = pageSize;
     printPageStyle.textContent = customPageDimensions
       ? `@page { size: ${width}px ${height}px; }`
@@ -3417,13 +4679,47 @@
   });
   document.addEventListener('keydown', (event) => {
     const modifier = event.ctrlKey || event.metaKey;
-    if (!modifier) return;
     const key = event.key.toLowerCase();
     const inEditor = editor.contains(event.target);
     const prevent = (action) => {
       event.preventDefault();
       action();
     };
+    const imageSelected = activeImage && editor.contains(activeImage) &&
+      !event.target.closest('input, textarea, select, button');
+    const watermarkSelected = activeWatermark && editor.contains(activeWatermark) &&
+      !event.target.closest('input, textarea, select, button');
+    if (watermarkSelected && (key === 'delete' || key === 'backspace')) {
+      prevent(removeSelectedWatermark);
+      return;
+    }
+    if (imageSelected) {
+      if (key === 'delete' || key === 'backspace') {
+        prevent(removeSelectedImage);
+        return;
+      }
+      if (modifier && key === 'c') {
+        prevent(() => {
+          copiedImage = activeImage.cloneNode(true);
+          imageCutPending = false;
+        });
+        return;
+      }
+      if (modifier && key === 'x') {
+        prevent(() => {
+          copiedImage = activeImage.cloneNode(true);
+          imageCutPending = true;
+          removeSelectedImage();
+        });
+        return;
+      }
+    }
+    if (modifier && key === 'v' && copiedImage && (inEditor || imageCutPending) &&
+      !event.target.closest('input, textarea, select, button')) {
+      prevent(pasteCopiedImage);
+      return;
+    }
+    if (!modifier) return;
 
     if (event.altKey) {
       if (inEditor && !event.shiftKey && /^Digit[1-3]$/.test(event.code)) {

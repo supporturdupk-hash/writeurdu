@@ -172,8 +172,14 @@
         <button class="insert-action" id="image-button" type="button"><img src="assets/Media/picture-svgrepo-com.svg" alt=""><span>Picture</span></button>
         <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
       </div>
+      <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
+        <button class="insert-action" id="shapes-button" type="button" aria-expanded="false" aria-controls="shapes-menu"><span class="insert-glyph">◇</span><span>Shapes</span></button>
+        <div id="shapes-menu" class="insert-menu shapes-menu" role="dialog" aria-label="Insert shapes" hidden>
+          <div id="shape-library"></div>
+        </div>
+      </div>
       <div class="ribbon-group insert-group insert-ribbon-group">
-        <button class="insert-action" id="convert-urdu-button" type="button" title="Convert selected Urdu text, or the whole document, to Roman Urdu"><span class="insert-glyph">↔</span><span>Urdu → English</span></button>
+        <button class="insert-action" id="watermark-button" type="button"><span class="insert-glyph">◇</span><span>Watermark</span></button>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
         <button class="insert-action" id="page-number-button" type="button" aria-expanded="false" aria-controls="page-number-menu"><img src="assets/Media/page-number-svgrepo-com.svg" alt=""><span>Page Number</span></button>
@@ -187,7 +193,15 @@
             <button type="button" data-page-number-location="footer-center">1<span>Footer center</span></button>
             <button type="button" data-page-number-location="footer-right">1<span>Footer right</span></button>
           </div>
-          <label class="include-page-count"><input id="include-page-count" type="checkbox"> Include page count</label>
+          <label class="page-number-style-label" for="page-number-style">Number style
+            <select id="page-number-style">
+              <option value="decimal">1, 2, 3</option>
+              <option value="upper-roman">I, II, III</option>
+              <option value="lower-roman">i, ii, iii</option>
+              <option value="upper-alpha">A, B, C</option>
+              <option value="lower-alpha">a, b, c</option>
+            </select>
+          </label>
           <button class="insert-menu-link" id="remove-page-numbers" type="button">Remove Page Numbers</button>
         </div>
         <button class="insert-action" id="header-insert-button" type="button"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Header</span></button>
@@ -370,7 +384,6 @@
       <section id="onscreen-keyboard" class="onscreen-keyboard" aria-label="On-screen keyboard" hidden>
         <div class="keyboard-layout-tabs" role="tablist" aria-label="Keyboard layout">
           <button type="button" role="tab" aria-selected="true" data-keyboard-layout="urdu">اردو</button>
-          <button type="button" role="tab" aria-selected="false" data-keyboard-layout="english">English</button>
           <button type="button" role="tab" aria-selected="false" data-keyboard-layout="symbols">Symbols</button>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="urdu">
@@ -381,53 +394,23 @@
             <button type="button" data-onscreen-key="ژ">ژ</button><button type="button" data-onscreen-key="س">س</button><button type="button" data-onscreen-key="ش">ش</button><button type="button" data-onscreen-key="ص">ص</button><button type="button" data-onscreen-key="ض">ض</button><button type="button" data-onscreen-key="ط">ط</button><button type="button" data-onscreen-key="ظ">ظ</button><button type="button" data-onscreen-key="ع">ع</button>
             <button type="button" data-onscreen-key="غ">غ</button><button type="button" data-onscreen-key="ف">ف</button><button type="button" data-onscreen-key="ق">ق</button><button type="button" data-onscreen-key="ک">ک</button><button type="button" data-onscreen-key="گ">گ</button><button type="button" data-onscreen-key="ل">ل</button><button type="button" data-onscreen-key="م">م</button><button type="button" data-onscreen-key="ن">ن</button>
             <button type="button" data-onscreen-key="ں">ں</button><button type="button" data-onscreen-key="و">و</button><button type="button" data-onscreen-key="ہ">ہ</button><button type="button" data-onscreen-key="ھ">ھ</button><button type="button" data-onscreen-key="ء">ء</button><button type="button" data-onscreen-key="ئ">ئ</button><button type="button" data-onscreen-key="ی">ی</button><button type="button" data-onscreen-key="ے">ے</button><button type="button" data-onscreen-key="ؤ">ؤ</button>
-          </div>
-          <div class="keyboard-heading">Harakat / اعراب</div>
-          <div class="keyboard-diacritics" dir="rtl">
-            <button type="button" data-onscreen-key="َ" aria-label="Zabar" title="Zabar">◌َ <span>زبر</span></button>
-            <button type="button" data-onscreen-key="ِ" aria-label="Zer" title="Zer">◌ِ <span>زیر</span></button>
-            <button type="button" data-onscreen-key="ُ" aria-label="Pesh" title="Pesh">◌ُ <span>پیش</span></button>
-            <button type="button" data-onscreen-key="ْ" aria-label="Sukoon" title="Sukoon">◌ْ <span>جزم</span></button>
-            <button type="button" data-onscreen-key="ّ" aria-label="Shadda" title="Shadda">◌ّ <span>تشدید</span></button>
-            <button type="button" data-onscreen-key="ً" aria-label="Fathatan" title="Do zabar">◌ً <span>دو زبر</span></button>
-            <button type="button" data-onscreen-key="ٍ" aria-label="Kasratan" title="Do zer">◌ٍ <span>دو زیر</span></button>
-            <button type="button" data-onscreen-key="ٌ" aria-label="Dammatan" title="Do pesh">◌ٌ <span>دو پیش</span></button>
-            <button type="button" data-onscreen-key="ٰ" aria-label="Khari zabar" title="Khari zabar">◌ٰ <span>کھڑی زبر</span></button>
-            <button type="button" data-onscreen-key="ٓ" aria-label="Maddah" title="Maddah">◌ٓ <span>مدّہ</span></button>
-            <button type="button" data-onscreen-key="ٔ" aria-label="Hamza above" title="Hamza above">◌ٔ <span>ہمزہ بالا</span></button>
-            <button type="button" data-onscreen-key="ٕ" aria-label="Hamza below" title="Hamza below">◌ٕ <span>ہمزہ زیر</span></button>
-          </div>
-        </div>
-        <div class="keyboard-layout" data-keyboard-panel="english" hidden>
-          <div class="keyboard-heading">English keyboard</div>
-          <div class="english-keyboard" dir="ltr">
-            <div class="english-key-row">
-              <button type="button" data-onscreen-key="1" data-shifted-key="!">1</button><button type="button" data-onscreen-key="2" data-shifted-key="@">2</button><button type="button" data-onscreen-key="3" data-shifted-key="#">3</button><button type="button" data-onscreen-key="4" data-shifted-key="$">4</button><button type="button" data-onscreen-key="5" data-shifted-key="%">5</button><button type="button" data-onscreen-key="6" data-shifted-key="^">6</button><button type="button" data-onscreen-key="7" data-shifted-key="&amp;">7</button><button type="button" data-onscreen-key="8" data-shifted-key="*">8</button><button type="button" data-onscreen-key="9" data-shifted-key="(">9</button><button type="button" data-onscreen-key="0" data-shifted-key=")">0</button>
-            </div>
-            <div class="english-key-row">
-              <button type="button" data-onscreen-key="q" data-shifted-key="Q">q</button><button type="button" data-onscreen-key="w" data-shifted-key="W">w</button><button type="button" data-onscreen-key="e" data-shifted-key="E">e</button><button type="button" data-onscreen-key="r" data-shifted-key="R">r</button><button type="button" data-onscreen-key="t" data-shifted-key="T">t</button><button type="button" data-onscreen-key="y" data-shifted-key="Y">y</button><button type="button" data-onscreen-key="u" data-shifted-key="U">u</button><button type="button" data-onscreen-key="i" data-shifted-key="I">i</button><button type="button" data-onscreen-key="o" data-shifted-key="O">o</button><button type="button" data-onscreen-key="p" data-shifted-key="P">p</button>
-            </div>
-            <div class="english-key-row">
-              <button type="button" data-onscreen-key="a" data-shifted-key="A">a</button><button type="button" data-onscreen-key="s" data-shifted-key="S">s</button><button type="button" data-onscreen-key="d" data-shifted-key="D">d</button><button type="button" data-onscreen-key="f" data-shifted-key="F">f</button><button type="button" data-onscreen-key="g" data-shifted-key="G">g</button><button type="button" data-onscreen-key="h" data-shifted-key="H">h</button><button type="button" data-onscreen-key="j" data-shifted-key="J">j</button><button type="button" data-onscreen-key="k" data-shifted-key="K">k</button><button type="button" data-onscreen-key="l" data-shifted-key="L">l</button>
-            </div>
-            <div class="english-key-row">
-              <button type="button" class="keyboard-shift" data-onscreen-action="shift" aria-label="Toggle uppercase" aria-pressed="false">⇧</button>
-              <button type="button" data-onscreen-key="z" data-shifted-key="Z">z</button><button type="button" data-onscreen-key="x" data-shifted-key="X">x</button><button type="button" data-onscreen-key="c" data-shifted-key="C">c</button><button type="button" data-onscreen-key="v" data-shifted-key="V">v</button><button type="button" data-onscreen-key="b" data-shifted-key="B">b</button><button type="button" data-onscreen-key="n" data-shifted-key="N">n</button><button type="button" data-onscreen-key="m" data-shifted-key="M">m</button><button type="button" data-onscreen-key="," data-shifted-key="&lt;">,</button><button type="button" data-onscreen-key="." data-shifted-key="&gt;">.</button>
-            </div>
-            <div class="english-key-row">
-              <button type="button" data-onscreen-key="-">-</button><button type="button" data-onscreen-key="=">=</button><button type="button" data-onscreen-key="[">[</button><button type="button" data-onscreen-key="]">]</button><button type="button" data-onscreen-key=";">;</button><button type="button" data-onscreen-key="&#39;">&#39;</button><button type="button" data-onscreen-key="/">/</button><button type="button" data-onscreen-key="\">&#92;</button><button type="button" data-onscreen-key="?">?</button>
-            </div>
+            <button type="button" data-onscreen-key="آ">آ</button><button type="button" data-onscreen-key="أ">أ</button><button type="button" data-onscreen-key="إ">إ</button><button type="button" data-onscreen-key="ٱ">ٱ</button><button type="button" data-onscreen-key="ة">ة</button><button type="button" data-onscreen-key="ى">ى</button><button type="button" data-onscreen-key="ۂ">ۂ</button><button type="button" data-onscreen-key="ۓ">ۓ</button>
           </div>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="symbols" hidden>
-          <div class="keyboard-heading">Punctuation &amp; symbols</div>
-          <div class="symbol-keyboard" dir="ltr">
-            <button type="button" data-onscreen-key=".">.</button><button type="button" data-onscreen-key=",">,</button><button type="button" data-onscreen-key="?">?</button><button type="button" data-onscreen-key="!">!</button><button type="button" data-onscreen-key=":">:</button><button type="button" data-onscreen-key=";">;</button><button type="button" data-onscreen-key="…">…</button><button type="button" data-onscreen-key="—">—</button>
-            <button type="button" data-onscreen-key="،">،</button><button type="button" data-onscreen-key="؛">؛</button><button type="button" data-onscreen-key="؟">؟</button><button type="button" data-onscreen-key="۔">۔</button><button type="button" data-onscreen-key="٪">٪</button><button type="button" data-onscreen-key="٫">٫</button><button type="button" data-onscreen-key="٭">٭</button><button type="button" data-onscreen-key="؍">؍</button>
-            <button type="button" data-onscreen-key="(">(</button><button type="button" data-onscreen-key=")">)</button><button type="button" data-onscreen-key="[">[</button><button type="button" data-onscreen-key="]">]</button><button type="button" data-onscreen-key="{">{</button><button type="button" data-onscreen-key="}">}</button><button type="button" data-onscreen-key="&quot;">"</button><button type="button" data-onscreen-key="&#39;">&#39;</button>
-            <button type="button" data-onscreen-key="@">@</button><button type="button" data-onscreen-key="#">#</button><button type="button" data-onscreen-key="$">$</button><button type="button" data-onscreen-key="€">€</button><button type="button" data-onscreen-key="£">£</button><button type="button" data-onscreen-key="¥">¥</button><button type="button" data-onscreen-key="₨">₨</button><button type="button" data-onscreen-key="&amp;">&amp;</button>
+          <div class="keyboard-heading">Urdu symbols / علامات</div>
+          <div class="symbol-keyboard" dir="rtl">
+            <button type="button" data-onscreen-key="۰">۰</button><button type="button" data-onscreen-key="۱">۱</button><button type="button" data-onscreen-key="۲">۲</button><button type="button" data-onscreen-key="۳">۳</button><button type="button" data-onscreen-key="۴">۴</button><button type="button" data-onscreen-key="۵">۵</button><button type="button" data-onscreen-key="۶">۶</button><button type="button" data-onscreen-key="۷">۷</button><button type="button" data-onscreen-key="۸">۸</button><button type="button" data-onscreen-key="۹">۹</button>
+            <button type="button" data-onscreen-key="،">،</button><button type="button" data-onscreen-key="؛">؛</button><button type="button" data-onscreen-key="؟">؟</button><button type="button" data-onscreen-key="۔">۔</button><button type="button" data-onscreen-key="٪">٪</button><button type="button" data-onscreen-key="٫">٫</button><button type="button" data-onscreen-key="٬">٬</button><button type="button" data-onscreen-key="؍">؍</button>
+            <button type="button" data-onscreen-key="َ" aria-label="Zabar">◌َ</button><button type="button" data-onscreen-key="ِ" aria-label="Zer">◌ِ</button><button type="button" data-onscreen-key="ُ" aria-label="Pesh">◌ُ</button><button type="button" data-onscreen-key="ْ" aria-label="Sukoon">◌ْ</button><button type="button" data-onscreen-key="ّ" aria-label="Shadda">◌ّ</button><button type="button" data-onscreen-key="ً" aria-label="Do zabar">◌ً</button><button type="button" data-onscreen-key="ٍ" aria-label="Do zer">◌ٍ</button><button type="button" data-onscreen-key="ٌ" aria-label="Do pesh">◌ٌ</button>
+            <button type="button" data-onscreen-key="ٰ">ٰ</button><button type="button" data-onscreen-key="ٓ">ٓ</button><button type="button" data-onscreen-key="ٔ">ٔ</button><button type="button" data-onscreen-key="ٕ">ٕ</button><button type="button" data-onscreen-key="ٖ">ٖ</button><button type="button" data-onscreen-key="ٗ">ٗ</button><button type="button" data-onscreen-key="٘">٘</button><button type="button" data-onscreen-key="ٙ">ٙ</button>
+            <button type="button" data-onscreen-key="ؒ">ؒ</button><button type="button" data-onscreen-key="ؓ">ؓ</button><button type="button" data-onscreen-key="ؐ">ؐ</button><button type="button" data-onscreen-key="ؑ">ؑ</button><button type="button" data-onscreen-key="ﷺ">ﷺ</button><button type="button" data-onscreen-key="۞">۞</button><button type="button" data-onscreen-key="۩">۩</button><button type="button" data-onscreen-key="٭">٭</button>
+            <button type="button" data-onscreen-key="۔">۔</button><button type="button" data-onscreen-key="ـ">ـ</button><button type="button" data-onscreen-key="ء">ء</button><button type="button" data-onscreen-key="آ">آ</button><button type="button" data-onscreen-key="أ">أ</button><button type="button" data-onscreen-key="إ">إ</button><button type="button" data-onscreen-key="ؤ">ؤ</button><button type="button" data-onscreen-key="ئ">ئ</button>
+            <button type="button" data-onscreen-key=".">.</button><button type="button" data-onscreen-key=",">,</button><button type="button" data-onscreen-key=":">:</button><button type="button" data-onscreen-key=";">;</button><button type="button" data-onscreen-key="!">!</button><button type="button" data-onscreen-key="…">…</button><button type="button" data-onscreen-key="—">—</button><button type="button" data-onscreen-key="–">–</button>
+            <button type="button" data-onscreen-key="(">(</button><button type="button" data-onscreen-key=")">)</button><button type="button" data-onscreen-key="[">[</button><button type="button" data-onscreen-key="]">]</button><button type="button" data-onscreen-key="{">{</button><button type="button" data-onscreen-key="}">}</button><button type="button" data-onscreen-key="«">«</button><button type="button" data-onscreen-key="»">»</button>
             <button type="button" data-onscreen-key="+">+</button><button type="button" data-onscreen-key="−">−</button><button type="button" data-onscreen-key="×">×</button><button type="button" data-onscreen-key="÷">÷</button><button type="button" data-onscreen-key="=">=</button><button type="button" data-onscreen-key="≠">≠</button><button type="button" data-onscreen-key="≤">≤</button><button type="button" data-onscreen-key="≥">≥</button>
-            <button type="button" data-onscreen-key="©">©</button><button type="button" data-onscreen-key="®">®</button><button type="button" data-onscreen-key="™">™</button><button type="button" data-onscreen-key="§">§</button><button type="button" data-onscreen-key="°">°</button><button type="button" data-onscreen-key="•">•</button><button type="button" data-onscreen-key="→">→</button><button type="button" data-onscreen-key="←">←</button>
+            <button type="button" data-onscreen-key="★">★</button><button type="button" data-onscreen-key="☆">☆</button><button type="button" data-onscreen-key="♥">♥</button><button type="button" data-onscreen-key="◆">◆</button><button type="button" data-onscreen-key="◇">◇</button><button type="button" data-onscreen-key="●">●</button><button type="button" data-onscreen-key="○">○</button><button type="button" data-onscreen-key="✓">✓</button>
+            <button type="button" data-onscreen-key="٪">٪</button><button type="button" data-onscreen-key="‰">‰</button><button type="button" data-onscreen-key="°">°</button><button type="button" data-onscreen-key="©">©</button><button type="button" data-onscreen-key="®">®</button><button type="button" data-onscreen-key="™">™</button><button type="button" data-onscreen-key="₨">₨</button><button type="button" data-onscreen-key="&amp;">&amp;</button>
           </div>
         </div>
         <div class="keyboard-controls" dir="ltr">
@@ -451,6 +434,15 @@
       <div class="document-stage">
         <div class="page-frame">
           <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" aria-autocomplete="list" aria-controls="word-suggestions" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
+          <div class="add-page-control"><button id="add-page-button" type="button">＋ Add new page</button></div>
+          <div class="page-actions" aria-label="Current page actions">
+            <button id="copy-page-button" type="button" aria-label="Copy current page below" title="Copy page below">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M5 8h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+            </button>
+            <button id="delete-page-button" type="button" aria-label="Delete current page" title="Delete page">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2.4"/></svg>
+            </button>
+          </div>
           <div class="vertical-ruler" aria-label="Vertical page ruler">
             <div class="vertical-ruler-track" id="vertical-ruler">
               <div class="vertical-ruler-scale" aria-hidden="true"></div>
@@ -517,20 +509,74 @@
     <button type="button" data-table-action="delete-table">Delete table</button>
   </div>
   <div id="table-manipulators" class="table-manipulators" aria-label="Table move and resize controls"></div>
+  <div id="image-manipulators" class="image-manipulators" aria-label="Picture resize controls" hidden></div>
+  <div id="shape-manipulators" class="image-manipulators shape-manipulators" aria-label="Shape resize controls" hidden></div>
+  <div id="shape-context-toolbar" class="context-toolbar shape-context-toolbar" role="toolbar" aria-label="Shape formatting" hidden>
+    <label>Fill <input id="shape-fill-color" type="color" value="#176b9a"></label>
+    <button id="shape-delete" class="image-icon-button image-delete-action" type="button" aria-label="Delete shape" title="Delete shape">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2m3 0-.8 12H5.8L5 5m3 3v6m4-6v6"/></svg>
+    </button>
+  </div>
+  <div id="image-rotation-indicator" class="image-rotation-indicator" role="status" aria-live="polite" hidden></div>
+  <div id="watermark-manipulators" class="image-manipulators" aria-label="Watermark resize controls" hidden></div>
   <div id="image-context-toolbar" class="context-toolbar image-context-toolbar" role="toolbar" aria-label="Picture formatting" hidden>
     <strong>Picture</strong>
-    <label>Width <input id="image-width" type="range" min="40" max="600" step="10" value="240"><output id="image-width-value">240 px</output></label>
-    <label>Wrap
-      <select id="image-wrap">
-        <option value="inline">In line with text</option><option value="square">Square</option>
-        <option value="top-bottom">Top and bottom</option><option value="behind">Behind text</option>
-        <option value="front">In front of text</option>
-      </select>
+    <div class="image-action-row" role="group" aria-label="Crop and delete picture">
+      <button id="image-crop-toggle" class="image-icon-button" type="button" aria-pressed="false" title="Crop picture" aria-label="Crop picture">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 2v12a2 2 0 0 0 2 2h10M2 6h12a2 2 0 0 1 2 2v10M8 8h4v4"/></svg>
+      </button>
+      <button id="image-crop-reset" class="image-icon-button" type="button" title="Reset crop" aria-label="Reset crop" hidden>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12v11H4zM7 8l6 5m0-5-6 5M6 2 3 5l3 3"/></svg>
+      </button>
+      <button id="image-delete" class="image-icon-button image-delete-action" type="button" title="Delete picture" aria-label="Delete picture">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2m3 0-.8 12H5.8L5 5m3 3v6m4-6v6"/></svg>
+      </button>
+    </div>
+    <div class="color-picker image-border-picker" data-color-picker="image-border">
+      <button class="color-tool image-border-color-tool" type="button" aria-label="Picture border color" title="Picture border color">
+        <img src="assets/Media/color-background-svgrepo-com.svg" alt=""><span></span>
+      </button>
+      <div class="color-palette" role="group" aria-label="Picture border color palette">
+        <label class="more-colors">More colors<input id="image-border-color" type="color" value="#176b9a" aria-label="More picture border colors"></label>
+      </div>
+    </div>
+    <label>Border width <input id="image-border-width" type="range" min="0" max="10" step="1" value="0"><output id="image-border-width-value">0 px</output></label>
+    <label>Corner radius <input id="image-radius" type="range" min="0" max="50" step="2" value="0"><output id="image-radius-value">0 px</output></label>
+    <label>Opacity <input id="image-opacity" type="range" min="0" max="100" step="5" value="100"><output id="image-opacity-value">100%</output></label>
+  </div>
+  <dialog id="watermark-dialog" class="watermark-dialog" aria-labelledby="watermark-dialog-title">
+    <form method="dialog"><button class="shortcuts-close" aria-label="Close watermark dialog">×</button></form>
+    <h2 id="watermark-dialog-title">Insert Watermark</h2>
+    <fieldset class="watermark-kind">
+      <legend>Watermark type</legend>
+      <label><input type="radio" name="watermark-kind" value="text" checked> Text</label>
+      <label><input type="radio" name="watermark-kind" value="image"> Image</label>
+    </fieldset>
+    <label id="watermark-text-field">Text
+      <input id="watermark-text" type="text" maxlength="80" value="DRAFT">
     </label>
-    <label>Align
-      <select id="image-align"><option value="center">Center</option><option value="left">Left</option><option value="right">Right</option></select>
+    <div id="watermark-preview" class="watermark-preview" aria-label="Watermark preview">
+      <span id="watermark-preview-text">DRAFT</span>
+      <img id="watermark-preview-image" alt="" hidden>
+    </div>
+    <label id="watermark-image-field" hidden>Image file
+      <input id="watermark-image-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
     </label>
-    <button id="image-delete" type="button">Delete picture</button>
+    <label>Opacity
+      <input id="watermark-opacity" type="range" min="5" max="100" step="5" value="25">
+      <output id="watermark-opacity-value">25%</output>
+    </label>
+    <div class="watermark-dialog-actions">
+      <button id="watermark-cancel" type="button">Cancel</button>
+      <button id="watermark-insert" type="button">Insert watermark</button>
+    </div>
+  </dialog>
+  <div id="watermark-context-toolbar" class="context-toolbar watermark-context-toolbar" role="toolbar" aria-label="Watermark formatting" hidden>
+    <strong>Watermark</strong>
+    <label id="watermark-edit-text-field">Text <input id="watermark-edit-text" type="text" maxlength="80"></label>
+    <label>Opacity <input id="watermark-edit-opacity" type="range" min="5" max="100" step="5" value="25"><output id="watermark-edit-opacity-value">25%</output></label>
+    <label id="watermark-edit-width-field">Width <input id="watermark-edit-width" type="range" min="40" max="2000" step="10" value="240"><output id="watermark-edit-width-value">240 px</output></label>
+    <button id="watermark-delete" type="button">Delete watermark</button>
   </div>
   <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
     <form method="dialog"><button class="shortcuts-close" aria-label="Close keyboard shortcuts">×</button></form>
@@ -547,7 +593,7 @@
       <div><dt>Insert link / Clear formatting</dt><dd>Ctrl+K / Ctrl+Space</dd></div>
       <div><dt>Heading 1, 2, or 3</dt><dd>Ctrl+Alt+1 / 2 / 3</dd></div>
     </dl>
-    <p>Copy, cut, paste, select-all, and cursor navigation use your browser’s built-in editing shortcuts.</p>
+    <p>Copy, cut, paste, select-all, and cursor navigation use your browser’s built-in editing shortcuts. When an image is selected, use Delete or Backspace to remove it, and Ctrl+C / Ctrl+X / Ctrl+V (or Command on Mac) to copy, cut, and paste it.</p>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
