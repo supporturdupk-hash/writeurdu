@@ -18,7 +18,7 @@
     document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
   }
 
-  applyTheme(localStorage.getItem(THEME_KEY) !== 'light');
+  applyTheme(localStorage.getItem(THEME_KEY) === 'dark');
   themeToggle.addEventListener('click', () => {
     const isDark = !document.body.classList.contains('theme-dark');
     applyTheme(isDark);

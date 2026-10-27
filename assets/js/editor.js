@@ -47,7 +47,8 @@
   const allowedTags = new Set([
     'A', 'B', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FONT', 'H1', 'H2', 'H3', 'H4',
     'H5', 'H6', 'HR', 'I', 'IMG', 'LI', 'OL', 'P', 'S', 'SPAN', 'STRIKE',
-    'STRONG', 'SUB', 'SUP', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL'
+    'STRONG', 'SUB', 'SUP', 'TABLE', 'TBODY', 'TD', 'TH', 'THEAD', 'TR', 'U', 'UL',
+    'COL', 'COLGROUP'
   ]);
 
   function sanitizeDocumentHtml(html) {
@@ -225,6 +226,8 @@
                 /^\d+(?:\.\d{1,4})?px$/.test(styleValue) && Number.parseFloat(styleValue) <= 10000)) {
               styles.push(`${property}:${styleValue}`);
             }
+            if (property === 'width' && node.tagName === 'COL' &&
+              /^(?:\d{1,3}(?:\.\d{1,6})?%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'position' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
               styleValue === 'absolute') styles.push(`${property}:${styleValue}`);
             if (['left', 'top'].includes(property) &&
@@ -1172,7 +1175,55 @@
       document.querySelectorAll('[data-keyboard-panel]').forEach((panel) => {
         panel.hidden = panel.dataset.keyboardPanel !== layout;
       });
+      document.getElementById('keyboard-shift').hidden = layout !== 'urdu';
     });
+  });
+  let keyboardShift = false;
+  const phoneticKeyboard = document.getElementById('phonetic-keyboard');
+  const physicalKeyboardRows = ['1234567890-=', 'qwertyuiop[]\\', "asdfghjkl;'", 'zxcvbnm,./'];
+  const renderPhoneticKeyboard = () => {
+    phoneticKeyboard.replaceChildren();
+    physicalKeyboardRows.forEach((row) => {
+      const rowElement = document.createElement('div');
+      rowElement.className = 'phonetic-key-row';
+      Array.from(row).forEach((character) => {
+        const key = document.createElement('button');
+        key.type = 'button';
+        key.className = 'phonetic-key';
+        key.dataset.physicalCharacter = character;
+        const legend = document.createElement('span');
+        const top = document.createElement('span');
+        const main = document.createElement('span');
+        legend.className = 'phonetic-key-legend';
+        top.className = 'phonetic-key-shift-output';
+        main.className = 'phonetic-key-main-output';
+        legend.textContent = character === ',' ? ', <' : character === '.' ? '. >' : character;
+        key.append(legend, top, main);
+        rowElement.append(key);
+      });
+      phoneticKeyboard.append(rowElement);
+    });
+    updatePhoneticKeyLabels();
+  };
+  const updatePhoneticKeyLabels = () => {
+    phoneticKeyboard.querySelectorAll('[data-physical-character]').forEach((key) => {
+      const character = key.dataset.physicalCharacter;
+      const normalOutput = UrduKeyboardLayout.mapCharacter(character);
+      const shiftedOutput = UrduKeyboardLayout.mapCharacter(character, true);
+      key.querySelector('.phonetic-key-main-output').textContent = normalOutput;
+      key.querySelector('.phonetic-key-shift-output').textContent = shiftedOutput;
+      key.dataset.onscreenKey = keyboardShift ? shiftedOutput : normalOutput;
+      key.classList.toggle('is-shifted', keyboardShift);
+      key.setAttribute('aria-label',
+        `${keyboardShift ? 'Shift plus ' : ''}${character} inserts ${key.dataset.onscreenKey}`);
+      key.title = `${character}: ${normalOutput}${shiftedOutput !== normalOutput ? ` / Shift: ${shiftedOutput}` : ''}`;
+    });
+  };
+  renderPhoneticKeyboard();
+  document.getElementById('keyboard-shift').addEventListener('click', (event) => {
+    keyboardShift = !keyboardShift;
+    event.currentTarget.setAttribute('aria-pressed', String(keyboardShift));
+    updatePhoneticKeyLabels();
   });
   document.querySelector('.keyboard-sidebar').addEventListener('pointerdown', rememberEditorSelection, true);
   document.querySelectorAll('[data-onscreen-key]').forEach((button) => {
@@ -2837,6 +2888,8 @@
       tableManipulators.replaceChildren();
       return;
     }
+    tableLayoutTab.hidden = false;
+    activateRibbonTab(tableLayoutTab);
     const table = cell.closest('table');
     activeTable = table;
     document.body.classList.add('table-tools-open');
@@ -3814,6 +3867,17 @@
       top: table.getBoundingClientRect().top - 12
     };
   };
+  const getTableCellAtPoint = (table, x, y) => {
+    const hitCell = document.elementsFromPoint(x, y)
+      .map((element) => element.closest('td, th'))
+      .find((cell) => cell && cell.closest('table') === table);
+    if (hitCell) return hitCell;
+    return Array.from(table.rows).flatMap((row) => Array.from(row.cells))
+      .find((cell) => {
+        const bounds = cell.getBoundingClientRect();
+        return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+      }) || null;
+  };
   let tableBandDrag = null;
   editor.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
@@ -3824,11 +3888,30 @@
       if (previousTable) refreshTableManipulators(previousTable);
       return;
     }
+    const table = cell.closest('table');
+    const existingSelection = selectedTableBand;
+    if (event.shiftKey && existingSelection && existingSelection.table === table) {
+      event.preventDefault();
+      const selection = window.getSelection();
+      if (selection) selection.removeAllRanges();
+      const preferredAxis = existingSelection.axis || 'row';
+      selectTableRange(table, existingSelection.startRow, cell.parentElement.rowIndex,
+        existingSelection.startColumn, cell.cellIndex, preferredAxis);
+      tableBandDrag = {
+        table,
+        startCell: cell,
+        startX: event.clientX,
+        startY: event.clientY,
+        pointerId: event.pointerId,
+        active: true
+      };
+      return;
+    }
     const previousTable = selectedTableBand && selectedTableBand.table;
     clearTableBandSelection();
     if (previousTable) refreshTableManipulators(previousTable);
     tableBandDrag = {
-      table: cell.closest('table'),
+      table,
       startCell: cell,
       startX: event.clientX,
       startY: event.clientY,
@@ -3842,9 +3925,8 @@
     const dx = event.clientX - startX;
     const dy = event.clientY - startY;
     if (!tableBandDrag.active && Math.hypot(dx, dy) < 6) return;
-    const target = document.elementFromPoint(event.clientX, event.clientY);
-    const endCell = target && target.closest('td, th');
-    if (!endCell || endCell.closest('table') !== table) return;
+    const endCell = getTableCellAtPoint(table, event.clientX, event.clientY);
+    if (!endCell) return;
     tableBandDrag.active = true;
     event.preventDefault();
     const selection = window.getSelection();
@@ -3857,7 +3939,11 @@
     if (!tableBandDrag || tableBandDrag.pointerId !== event.pointerId) return;
     const selectionTable = tableBandDrag.active ? tableBandDrag.table : null;
     tableBandDrag = null;
-    if (selectionTable && editor.contains(selectionTable)) refreshTableManipulators(selectionTable);
+    if (selectionTable && editor.contains(selectionTable)) {
+      refreshTableManipulators(selectionTable);
+      const selectedCell = selectionTable.querySelector('.table-band-selected');
+      if (selectedCell) updateTableToolbar(selectedCell);
+    }
   });
   const refreshTableManipulators = (table) => {
     if (!table || !editor.contains(table)) {
@@ -3869,8 +3955,8 @@
     grips[0].style.left = `${bounds.left - 20}px`;
     grips[0].style.top = `${bounds.top - 20}px`;
 
-    const firstRow = table.rows[0];
-    if (firstRow && firstRow.cells.length) {
+    const columnCount = getTableColumnCount(table);
+    if (columnCount) {
       ['left', 'right'].forEach((side) => {
         const grip = makeTableGrip(`${side}-edge`, 0, 'table-edge-grip', `Resize table ${side} edge`);
         grip.style.left = `${side === 'left' ? bounds.left : bounds.right}px`;
@@ -3879,18 +3965,23 @@
         grips.push(grip);
       });
     }
-    if (firstRow && firstRow.cells.length > 1) {
-      for (let index = 0; index < firstRow.cells.length - 1; index += 1) {
-        const first = firstRow.cells[index].getBoundingClientRect();
-        const second = firstRow.cells[index + 1].getBoundingClientRect();
+    if (columnCount > 1) {
+      if (Array.from(table.rows).some((row) => Array.from(row.cells).some((cell) =>
+        cell.colSpan > 1 || cell.rowSpan > 1))) ensureTableColumnGroup(table);
+      const widths = getTableColumnWidths(table);
+      const isRtl = getComputedStyle(table).direction === 'rtl';
+      let offset = 0;
+      for (let index = 0; index < columnCount - 1; index += 1) {
+        offset += widths[index];
+        const dividerX = isRtl ? bounds.right - offset : bounds.left + offset;
         const grip = makeTableGrip('column', index, 'column-grip', `Resize column ${index + 1}`);
-        grip.style.left = `${getColumnDividerX(first, second)}px`;
+        grip.style.left = `${dividerX}px`;
         grip.style.top = `${bounds.top}px`;
         grip.style.height = `${bounds.height}px`;
         grips.push(grip);
         const addColumn = makeTableGrip('insert-column', index, 'table-insert-grip', `Insert column after column ${index + 1}`);
         addColumn.textContent = '+';
-        addColumn.style.left = `${getColumnDividerX(first, second)}px`;
+        addColumn.style.left = `${dividerX}px`;
         addColumn.style.top = `${bounds.top}px`;
         addColumn.style.display = 'none';
         grips.push(addColumn);
@@ -4102,10 +4193,9 @@
     let firstColumnWidth = 0;
     let secondColumnWidth = 0;
     if (kind === 'column') {
-      const first = rows[0].cells[index].getBoundingClientRect();
-      const second = rows[0].cells[index + 1].getBoundingClientRect();
-      firstColumnWidth = first.width;
-      secondColumnWidth = second.width;
+      const widths = ensureTableColumnGroup(table);
+      firstColumnWidth = widths[index];
+      secondColumnWidth = widths[index + 1];
     }
     const isEdgeResize = kind === 'left-edge' || kind === 'right-edge';
     const edgeCells = isEdgeResize
@@ -4192,26 +4282,16 @@
         cell.style.width = `${width + delta}px`;
       });
     } else if (kind === 'column') {
-      const first = table.rows[0].cells[index];
-      const second = table.rows[0].cells[index + 1];
-      if (!first || !second) return;
-      const firstRect = first.getBoundingClientRect();
-      const secondRect = second.getBoundingClientRect();
-      const leftCellIndex = firstRect.left < secondRect.left ? index : index + 1;
-      const rightCellIndex = leftCellIndex === index ? index + 1 : index;
-      const leftCellWidth = leftCellIndex === index ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
-      const rightCellWidth = rightCellIndex === index ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
-      const rightCellMinimum = rightCellWidth - 32;
-      const leftCellMinimum = 32 - leftCellWidth;
-      const delta = Math.max(leftCellMinimum, Math.min(rightCellMinimum, dx));
-      table.style.tableLayout = 'fixed';
-      Array.from(table.rows).forEach((tableRow) => {
-        const leftCell = tableRow.cells[leftCellIndex];
-        const rightCell = tableRow.cells[rightCellIndex];
-        if (!leftCell || !rightCell) return;
-        leftCell.style.width = `${leftCellWidth + delta}px`;
-        rightCell.style.width = `${rightCellWidth - delta}px`;
-      });
+      const widths = getTableColumnWidths(table);
+      const isRtl = getComputedStyle(table).direction === 'rtl';
+      const leftColumn = isRtl ? index + 1 : index;
+      const rightColumn = isRtl ? index : index + 1;
+      const leftWidth = isRtl ? tableDrag.secondColumnWidth : tableDrag.firstColumnWidth;
+      const rightWidth = isRtl ? tableDrag.firstColumnWidth : tableDrag.secondColumnWidth;
+      const delta = Math.max(32 - leftWidth, Math.min(rightWidth - 32, dx));
+      widths[leftColumn] = leftWidth + delta;
+      widths[rightColumn] = rightWidth - delta;
+      setTableColumnWidths(table, widths);
     } else if (kind === 'row') {
       const row = table.rows[index];
       if (!row) return;
@@ -4324,6 +4404,88 @@
   const getActiveTable = () => activeTableCell && activeTableCell.closest('table');
   const getTableColumnCount = (table) => Array.from(table.rows).reduce((maximum, row) =>
     Math.max(maximum, Array.from(row.cells).reduce((total, cell) => total + cell.colSpan, 0)), 0);
+  const getTableGrid = (table) => {
+    const rows = Array.from(table.rows);
+    const grid = rows.map(() => []);
+    rows.forEach((row, rowIndex) => {
+      let columnIndex = 0;
+      Array.from(row.cells).forEach((cell) => {
+        while (grid[rowIndex][columnIndex]) columnIndex += 1;
+        const rowEnd = Math.min(rows.length, rowIndex + cell.rowSpan);
+        const columnEnd = columnIndex + cell.colSpan;
+        for (let gridRow = rowIndex; gridRow < rowEnd; gridRow += 1) {
+          for (let gridColumn = columnIndex; gridColumn < columnEnd; gridColumn += 1) {
+            grid[gridRow][gridColumn] = cell;
+          }
+        }
+        columnIndex = columnEnd;
+      });
+    });
+    return grid;
+  };
+  const getTableColumnWidths = (table) => {
+    const columnCount = getTableColumnCount(table);
+    const tableWidth = table.getBoundingClientRect().width;
+    const colgroup = table.querySelector(':scope > colgroup');
+    if (colgroup && colgroup.children.length === columnCount) {
+      return Array.from(colgroup.children, (column) => {
+        const width = Number.parseFloat(column.style.width);
+        return column.style.width.endsWith('%') && Number.isFinite(width)
+          ? tableWidth * width / 100
+          : column.getBoundingClientRect().width;
+      });
+    }
+    const widths = Array(columnCount).fill(0);
+    const samples = Array(columnCount).fill(0);
+    getTableGrid(table).forEach((row) => {
+      const cells = new Set(row.filter(Boolean));
+      cells.forEach((cell) => {
+        if (cell.colSpan !== 1) return;
+        const columnIndex = row.indexOf(cell);
+        if (columnIndex < 0) return;
+        widths[columnIndex] += cell.getBoundingClientRect().width;
+        samples[columnIndex] += 1;
+      });
+    });
+    const fallbackWidth = tableWidth / Math.max(1, columnCount);
+    return widths.map((width, index) => samples[index] ? width / samples[index] : fallbackWidth);
+  };
+  const ensureTableColumnGroup = (table) => {
+    const columnCount = getTableColumnCount(table);
+    if (!columnCount) return [];
+    const existing = table.querySelector(':scope > colgroup');
+    if (existing && existing.children.length === columnCount) return getTableColumnWidths(table);
+    const widths = getTableColumnWidths(table);
+    const total = widths.reduce((sum, width) => sum + width, 0) || table.getBoundingClientRect().width;
+    const colgroup = document.createElement('colgroup');
+    widths.forEach((width) => {
+      const column = document.createElement('col');
+      column.style.width = `${(width / total) * 100}%`;
+      colgroup.append(column);
+    });
+    if (existing) existing.remove();
+    table.insertBefore(colgroup, table.firstChild);
+    table.style.tableLayout = 'fixed';
+    Array.from(table.rows).forEach((row) => Array.from(row.cells).forEach((cell) => {
+      cell.style.removeProperty('width');
+    }));
+    return widths;
+  };
+  const setTableColumnWidths = (table, widths) => {
+    const total = widths.reduce((sum, width) => sum + width, 0);
+    if (!total) return;
+    const colgroup = table.querySelector(':scope > colgroup') || document.createElement('colgroup');
+    if (!colgroup.parentElement) table.insertBefore(colgroup, table.firstChild);
+    colgroup.replaceChildren(...widths.map((width) => {
+      const column = document.createElement('col');
+      column.style.width = `${(width / total) * 100}%`;
+      return column;
+    }));
+    table.style.tableLayout = 'fixed';
+    Array.from(table.rows).forEach((row) => Array.from(row.cells).forEach((cell) => {
+      cell.style.removeProperty('width');
+    }));
+  };
   const canExpandTable = (table, addRows, addColumns) => {
     const rows = table.rows.length + addRows;
     const columns = getTableColumnCount(table) + addColumns;
@@ -4343,7 +4505,10 @@
     }
     const sourceIndex = Math.max(0, Math.min(index, firstRow.cells.length - 1));
     const insertionIndex = position === 'left' ? sourceIndex : sourceIndex + 1;
-    const widths = Array.from(firstRow.cells, (cell) => cell.getBoundingClientRect().width);
+    const hasColumnGroup = Boolean(table.querySelector(':scope > colgroup'));
+    const widths = hasColumnGroup
+      ? getTableColumnWidths(table)
+      : Array.from(firstRow.cells, (cell) => cell.getBoundingClientRect().width);
     const sharedWidth = widths[sourceIndex] / 2;
     widths[sourceIndex] = sharedWidth;
     widths.splice(insertionIndex, 0, sharedWidth);
@@ -4352,11 +4517,14 @@
       const newCell = createMatchingEmptyCell(reference);
       newCell.removeAttribute('id');
       row.insertBefore(newCell, position === 'left' ? reference : reference.nextSibling);
-      Array.from(row.cells).forEach((cell, columnIndex) => {
-        cell.style.width = `${widths[columnIndex]}px`;
-      });
+      if (!hasColumnGroup) {
+        Array.from(row.cells).forEach((cell, columnIndex) => {
+          cell.style.width = `${widths[columnIndex]}px`;
+        });
+      }
     });
-    table.style.tableLayout = 'fixed';
+    if (hasColumnGroup) setTableColumnWidths(table, widths);
+    else table.style.tableLayout = 'fixed';
     return insertionIndex;
   };
   const createTableCell = (tagName) => {
@@ -4426,30 +4594,56 @@
     scheduleSave();
     updateCounts();
   });
-  const cellFromNode = (node) => {
-    const element = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
-    return element && element.closest('td, th');
-  };
-  const getSelectedTableCells = (table) => {
-    const selection = window.getSelection();
-    const startCell = selection && cellFromNode(selection.anchorNode);
-    const endCell = selection && cellFromNode(selection.focusNode);
-    if (!startCell || !endCell || startCell.closest('table') !== table || endCell.closest('table') !== table) return [];
-    const minRow = Math.min(startCell.parentElement.rowIndex, endCell.parentElement.rowIndex);
-    const maxRow = Math.max(startCell.parentElement.rowIndex, endCell.parentElement.rowIndex);
-    const minColumn = Math.min(startCell.cellIndex, endCell.cellIndex);
-    const maxColumn = Math.max(startCell.cellIndex, endCell.cellIndex);
-    const cells = [];
-    for (let rowIndex = minRow; rowIndex <= maxRow; rowIndex += 1) {
-      const row = table.rows[rowIndex];
-      if (!row || row.cells.length <= maxColumn) return [];
-      for (let columnIndex = minColumn; columnIndex <= maxColumn; columnIndex += 1) {
-        const cell = row.cells[columnIndex];
-        if (cell.colSpan !== 1 || cell.rowSpan !== 1) return [];
-        cells.push(cell);
+  const getSelectedTableCellRectangle = (table) => {
+    const selectedCells = new Set(table.querySelectorAll('.table-band-selected'));
+    if (selectedCells.size < 2) return null;
+    const rows = Array.from(table.rows);
+    const grid = rows.map(() => []);
+    rows.forEach((row, rowIndex) => {
+      let columnIndex = 0;
+      Array.from(row.cells).forEach((cell) => {
+        while (grid[rowIndex][columnIndex]) columnIndex += 1;
+        const rowEnd = Math.min(rows.length, rowIndex + cell.rowSpan);
+        const columnEnd = columnIndex + cell.colSpan;
+        for (let gridRow = rowIndex; gridRow < rowEnd; gridRow += 1) {
+          for (let gridColumn = columnIndex; gridColumn < columnEnd; gridColumn += 1) {
+            grid[gridRow][gridColumn] = cell;
+          }
+        }
+        columnIndex = columnEnd;
+      });
+    });
+    const positions = new Map();
+    grid.forEach((gridRow, rowIndex) => gridRow.forEach((cell, columnIndex) => {
+      if (cell && selectedCells.has(cell)) {
+        const position = positions.get(cell) || {
+          startRow: rowIndex, endRow: rowIndex,
+          startColumn: columnIndex, endColumn: columnIndex
+        };
+        position.endRow = rowIndex;
+        position.endColumn = columnIndex;
+        positions.set(cell, position);
+      }
+    }));
+    if (positions.size !== selectedCells.size) return null;
+    const bounds = {
+      startRow: Math.min(...Array.from(positions.values(), (position) => position.startRow)),
+      endRow: Math.max(...Array.from(positions.values(), (position) => position.endRow)),
+      startColumn: Math.min(...Array.from(positions.values(), (position) => position.startColumn)),
+      endColumn: Math.max(...Array.from(positions.values(), (position) => position.endColumn))
+    };
+    for (let rowIndex = bounds.startRow; rowIndex <= bounds.endRow; rowIndex += 1) {
+      for (let columnIndex = bounds.startColumn; columnIndex <= bounds.endColumn; columnIndex += 1) {
+        if (!selectedCells.has(grid[rowIndex][columnIndex])) return null;
       }
     }
-    return cells;
+    const cells = Array.from(positions.keys()).sort((first, second) => {
+      const firstPosition = positions.get(first);
+      const secondPosition = positions.get(second);
+      return firstPosition.startRow - secondPosition.startRow ||
+        firstPosition.startColumn - secondPosition.startColumn;
+    });
+    return { ...bounds, cells, firstCell: grid[bounds.startRow][bounds.startColumn] };
   };
   const replaceTableCellTag = (cell, tagName) => {
     const replacement = document.createElement(tagName);
@@ -4502,26 +4696,50 @@
         insertTableColumn(table, columnIndex, action === 'column-left' ? 'left' : 'right');
         updateTableToolbar(table.rows[row.rowIndex].cells[columnIndex + (action === 'column-right' ? 1 : 0)]);
       } else if (action === 'delete-row') {
-        const next = row.nextElementSibling || row.previousElementSibling;
-        if (table.rows.length <= 1) table.remove();
-        else row.remove();
-        updateTableToolbar(next ? next.cells[Math.min(columnIndex, next.cells.length - 1)] : null);
+        const rowIndexes = selectedTableBand && selectedTableBand.table === table &&
+          selectedTableBand.axis === 'row'
+          ? Array.from({ length: selectedTableBand.endRow - selectedTableBand.startRow + 1 },
+            (_, offset) => selectedTableBand.startRow + offset)
+          : [row.rowIndex];
+        const firstRemovedRow = rowIndexes[0];
+        if (rowIndexes.length >= table.rows.length) {
+          table.remove();
+          clearTableBandSelection();
+          updateTableToolbar(null);
+        } else {
+          rowIndexes.slice().reverse().forEach((index) => table.rows[index]?.remove());
+          clearTableBandSelection();
+          const nextRow = table.rows[Math.min(firstRemovedRow, table.rows.length - 1)];
+          updateTableToolbar(nextRow && nextRow.cells[Math.min(columnIndex, nextRow.cells.length - 1)]);
+        }
       } else if (action === 'delete-column') {
-        if (row.cells.length <= 1) table.remove();
-        else Array.from(table.rows).forEach((tableRow) => tableRow.cells[columnIndex]?.remove());
-        updateTableToolbar(editor.contains(table) ? table.rows[Math.min(row.rowIndex, table.rows.length - 1)].cells[Math.min(columnIndex, table.rows[0].cells.length - 1)] : null);
+        const columnIndexes = selectedTableBand && selectedTableBand.table === table &&
+          selectedTableBand.axis === 'column'
+          ? Array.from({ length: selectedTableBand.endColumn - selectedTableBand.startColumn + 1 },
+            (_, offset) => selectedTableBand.startColumn + offset)
+          : [columnIndex];
+        const columnCount = Math.max(0, ...Array.from(table.rows, (tableRow) => tableRow.cells.length));
+        if (columnIndexes.length >= columnCount) {
+          table.remove();
+          clearTableBandSelection();
+          updateTableToolbar(null);
+        } else {
+          Array.from(table.rows).forEach((tableRow) => {
+            columnIndexes.slice().reverse().forEach((index) => tableRow.cells[index]?.remove());
+          });
+          clearTableBandSelection();
+          const nextRow = table.rows[Math.min(row.rowIndex, table.rows.length - 1)];
+          updateTableToolbar(nextRow && nextRow.cells[Math.min(columnIndex, nextRow.cells.length - 1)]);
+        }
       } else if (action === 'merge-cells') {
-        const cells = getSelectedTableCells(table);
-        if (cells.length < 2) {
+        const selection = getSelectedTableCellRectangle(table);
+        if (!selection) {
           showToast('Select two or more adjacent cells in the same table first.');
           return;
         }
-        const startRow = Math.min(...cells.map((cell) => cell.parentElement.rowIndex));
-        const startColumn = Math.min(...cells.map((cell) => cell.cellIndex));
-        const endRow = Math.max(...cells.map((cell) => cell.parentElement.rowIndex));
-        const endColumn = Math.max(...cells.map((cell) => cell.cellIndex));
-        const firstCell = table.rows[startRow].cells[startColumn];
-        cells.slice(1).forEach((cell) => {
+        ensureTableColumnGroup(table);
+        const { cells, firstCell, startRow, endRow, startColumn, endColumn } = selection;
+        cells.filter((cell) => cell !== firstCell).forEach((cell) => {
           if (cell.textContent.trim()) {
             firstCell.append(document.createElement('br'));
             while (cell.firstChild) firstCell.append(cell.firstChild);
@@ -4530,35 +4748,51 @@
         });
         firstCell.colSpan = endColumn - startColumn + 1;
         firstCell.rowSpan = endRow - startRow + 1;
+        clearTableBandSelection();
         updateTableToolbar(firstCell);
       } else if (action === 'split-cell') {
         const cell = activeTableCell;
         if (cell.colSpan === 1 && cell.rowSpan === 1) {
-          showToast('Select a merged cell to split it.');
+          if (!canExpandTable(table, 0, 1)) return;
+          const insertionIndex = insertTableColumn(table, cell.cellIndex, 'right');
+          if (insertionIndex === null) return;
+          clearTableBandSelection();
+          updateTableToolbar(cell);
+          applyTableDesign(table);
+          refreshTableManipulators(table);
+          editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertTable' }));
+          scheduleSave();
+          updateCounts();
           return;
         }
+        ensureTableColumnGroup(table);
         const columnSpan = cell.colSpan;
         const rowSpan = cell.rowSpan;
         cell.colSpan = 1;
         cell.rowSpan = 1;
         for (let offset = 1; offset < columnSpan; offset += 1) {
-          cell.parentElement.insertBefore(createTableCell(cell.tagName.toLowerCase()), cell.nextSibling);
+          cell.parentElement.insertBefore(createMatchingEmptyCell(cell), cell.nextSibling);
         }
         for (let offset = 1; offset < rowSpan; offset += 1) {
           const row = table.rows[cell.parentElement.rowIndex + offset];
           if (!row) continue;
           for (let column = 0; column < columnSpan; column += 1) {
-            row.insertBefore(createTableCell(cell.tagName.toLowerCase()), row.cells[cell.cellIndex + column] || null);
+            row.insertBefore(createMatchingEmptyCell(cell), row.cells[cell.cellIndex + column] || null);
           }
         }
         updateTableToolbar(cell);
       } else if (action === 'distribute-columns') {
-        const columnCount = table.rows[0] && table.rows[0].cells.length;
+        const columnCount = getTableColumnCount(table);
         if (columnCount) {
-          table.style.tableLayout = 'fixed';
-          Array.from(table.rows).forEach((tableRow) => Array.from(tableRow.cells).forEach((cell) => {
-            cell.style.width = `${100 / columnCount}%`;
-          }));
+          if (table.querySelector(':scope > colgroup')) {
+            const equalWidth = table.getBoundingClientRect().width / columnCount;
+            setTableColumnWidths(table, Array(columnCount).fill(equalWidth));
+          } else {
+            table.style.tableLayout = 'fixed';
+            Array.from(table.rows).forEach((tableRow) => Array.from(tableRow.cells).forEach((cell) => {
+              cell.style.width = `${100 / columnCount}%`;
+            }));
+          }
         }
       } else if (action === 'distribute-rows') {
         const rowHeight = table.getBoundingClientRect().height / Math.max(1, table.rows.length);
@@ -4806,16 +5040,18 @@
       button.title = `${expanded ? 'Hide' : 'Show'} ${name}`;
     });
   });
-  document.getElementById('typing-toggle').addEventListener('click', (event) => {
-    urduTyping = !urduTyping;
-    event.currentTarget.classList.toggle('active', urduTyping);
-    event.currentTarget.setAttribute('aria-pressed', String(urduTyping));
-    event.currentTarget.querySelector('span:last-child').childNodes[0].textContent = urduTyping ? ' Urdu ' : ' English ';
-    event.currentTarget.querySelector('strong').textContent = 'ON';
-    event.currentTarget.setAttribute('aria-label', `Toggle Urdu keyboard mapping; ${urduTyping ? 'Urdu' : 'English'} typing is on`);
-    event.currentTarget.title = urduTyping ? 'Urdu keyboard mapping is on' : 'English typing is on';
+  const setTypingMode = (enabled) => {
+    urduTyping = enabled;
+    const toggle = document.getElementById('typing-toggle');
+    toggle.classList.toggle('active', urduTyping);
+    toggle.setAttribute('aria-pressed', String(urduTyping));
+    toggle.querySelector('span:last-child').childNodes[0].textContent = urduTyping ? ' Urdu ' : ' English ';
+    toggle.querySelector('strong').textContent = 'ON';
+    toggle.setAttribute('aria-label', `Toggle Urdu keyboard mapping; ${urduTyping ? 'Urdu' : 'English'} typing is on`);
+    toggle.title = urduTyping ? 'Urdu keyboard mapping is on' : 'English typing is on';
     document.getElementById('typing-status').textContent = urduTyping ? 'Urdu keyboard' : 'English';
-  });
+  };
+  document.getElementById('typing-toggle').addEventListener('click', () => setTypingMode(!urduTyping));
   document.getElementById('typing-help-button').addEventListener('click', () => {
     document.getElementById('shortcuts-dialog').showModal();
   });
@@ -5061,6 +5297,11 @@
     event.target.value = '';
   });
   document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey && !event.metaKey && !event.altKey && event.code === 'Space') {
+      event.preventDefault();
+      setTypingMode(!urduTyping);
+      return;
+    }
     const modifier = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
     const inEditor = editor.contains(event.target);

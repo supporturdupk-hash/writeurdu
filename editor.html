@@ -391,14 +391,8 @@
         </div>
         <div class="keyboard-layout" data-keyboard-panel="urdu">
           <div class="keyboard-heading">Urdu keyboard</div>
-          <div class="keyboard-letters" dir="rtl">
-            <button type="button" data-onscreen-key="ا">ا</button><button type="button" data-onscreen-key="ب">ب</button><button type="button" data-onscreen-key="پ">پ</button><button type="button" data-onscreen-key="ت">ت</button><button type="button" data-onscreen-key="ٹ">ٹ</button><button type="button" data-onscreen-key="ث">ث</button><button type="button" data-onscreen-key="ج">ج</button><button type="button" data-onscreen-key="چ">چ</button>
-            <button type="button" data-onscreen-key="ح">ح</button><button type="button" data-onscreen-key="خ">خ</button><button type="button" data-onscreen-key="د">د</button><button type="button" data-onscreen-key="ڈ">ڈ</button><button type="button" data-onscreen-key="ذ">ذ</button><button type="button" data-onscreen-key="ر">ر</button><button type="button" data-onscreen-key="ڑ">ڑ</button><button type="button" data-onscreen-key="ز">ز</button>
-            <button type="button" data-onscreen-key="ژ">ژ</button><button type="button" data-onscreen-key="س">س</button><button type="button" data-onscreen-key="ش">ش</button><button type="button" data-onscreen-key="ص">ص</button><button type="button" data-onscreen-key="ض">ض</button><button type="button" data-onscreen-key="ط">ط</button><button type="button" data-onscreen-key="ظ">ظ</button><button type="button" data-onscreen-key="ع">ع</button>
-            <button type="button" data-onscreen-key="غ">غ</button><button type="button" data-onscreen-key="ف">ف</button><button type="button" data-onscreen-key="ق">ق</button><button type="button" data-onscreen-key="ک">ک</button><button type="button" data-onscreen-key="گ">گ</button><button type="button" data-onscreen-key="ل">ل</button><button type="button" data-onscreen-key="م">م</button><button type="button" data-onscreen-key="ن">ن</button>
-            <button type="button" data-onscreen-key="ں">ں</button><button type="button" data-onscreen-key="و">و</button><button type="button" data-onscreen-key="ہ">ہ</button><button type="button" data-onscreen-key="ھ">ھ</button><button type="button" data-onscreen-key="ء">ء</button><button type="button" data-onscreen-key="ئ">ئ</button><button type="button" data-onscreen-key="ی">ی</button><button type="button" data-onscreen-key="ے">ے</button><button type="button" data-onscreen-key="ؤ">ؤ</button>
-            <button type="button" data-onscreen-key="آ">آ</button><button type="button" data-onscreen-key="أ">أ</button><button type="button" data-onscreen-key="إ">إ</button><button type="button" data-onscreen-key="ٱ">ٱ</button><button type="button" data-onscreen-key="ة">ة</button><button type="button" data-onscreen-key="ى">ى</button><button type="button" data-onscreen-key="ۂ">ۂ</button><button type="button" data-onscreen-key="ۓ">ۓ</button>
-          </div>
+          <div id="phonetic-keyboard" class="phonetic-keyboard" aria-label="Urdu phonetic keyboard"></div>
+          <button id="keyboard-shift" class="keyboard-shift-toggle" type="button" aria-pressed="false">⇧ Shift</button>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="symbols" hidden>
           <div class="keyboard-heading">Urdu symbols / علامات</div>
@@ -523,8 +517,8 @@
       </button>
     </div>
     <div class="shape-toolbar-row shape-toolbar-line-row">
-      <label>Line <input id="shape-line-color" type="color" value="#176b9a" aria-label="Shape line color"></label>
-      <label class="shape-line-width-control">Width <input id="shape-line-width" type="range" min="0" max="10" step="1" value="2"><output id="shape-line-width-value">2 px</output></label>
+      <label>Stroke <input id="shape-line-color" type="color" value="#176b9a" aria-label="Shape stroke color"></label>
+      <label class="shape-line-width-control">Width <input id="shape-line-width" type="range" min="0" max="10" step="1" value="2" aria-label="Shape stroke width"><output id="shape-line-width-value">2 px</output></label>
     </div>
     <label>Opacity <input id="shape-opacity" type="range" min="10" max="100" step="5" value="100"><output id="shape-opacity-value">100%</output></label>
     <label>Text <input id="shape-text" type="text" maxlength="120" placeholder="Add text to shape" aria-label="Text inside shape"></label>
@@ -597,12 +591,13 @@
       <div><dt>Bold / Italic / Underline</dt><dd>Ctrl+B / Ctrl+I / Ctrl+U</dd></div>
       <div><dt>Undo / Redo</dt><dd>Ctrl+Z / Ctrl+Y</dd></div>
       <div><dt>Copy / Cut / Paste / Select all</dt><dd>Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+A</dd></div>
+      <div><dt>Toggle Urdu / English typing</dt><dd>Ctrl+Space</dd></div>
       <div><dt>Find / Replace</dt><dd>Ctrl+F / Ctrl+H</dd></div>
       <div><dt>Save on this device / Download project</dt><dd>Ctrl+S / Ctrl+Shift+S</dd></div>
       <div><dt>Open file / New document / Print</dt><dd>Ctrl+O / Ctrl+N / Ctrl+P</dd></div>
       <div><dt>Left / Center / Right / Justify</dt><dd>Ctrl+L / Ctrl+E / Ctrl+R / Ctrl+J</dd></div>
       <div><dt>Bulleted list / Numbered list</dt><dd>Ctrl+Shift+L / Ctrl+Shift+7</dd></div>
-      <div><dt>Insert link / Clear formatting</dt><dd>Ctrl+K / Ctrl+Space</dd></div>
+      <div><dt>Insert link</dt><dd>Ctrl+K</dd></div>
       <div><dt>Heading 1, 2, or 3</dt><dd>Ctrl+Alt+1 / 2 / 3</dd></div>
     </dl>
     <p>Copy, cut, paste, select-all, and cursor navigation use your browser’s built-in editing shortcuts. When an image is selected, use Delete or Backspace to remove it, and Ctrl+C / Ctrl+X / Ctrl+V (or Command on Mac) to copy, cut, and paste it.</p>
