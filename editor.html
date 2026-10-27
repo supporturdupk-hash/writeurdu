@@ -179,6 +179,9 @@
         </div>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group">
+        <button class="insert-action" id="text-box-button" type="button"><span class="insert-glyph">T</span><span>Text Box</span></button>
+      </div>
+      <div class="ribbon-group insert-group insert-ribbon-group">
         <button class="insert-action" id="watermark-button" type="button"><span class="insert-glyph">◇</span><span>Watermark</span></button>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
@@ -512,10 +515,19 @@
   <div id="image-manipulators" class="image-manipulators" aria-label="Picture resize controls" hidden></div>
   <div id="shape-manipulators" class="image-manipulators shape-manipulators" aria-label="Shape resize controls" hidden></div>
   <div id="shape-context-toolbar" class="context-toolbar shape-context-toolbar" role="toolbar" aria-label="Shape formatting" hidden>
-    <label>Fill <input id="shape-fill-color" type="color" value="#176b9a"></label>
-    <button id="shape-delete" class="image-icon-button image-delete-action" type="button" aria-label="Delete shape" title="Delete shape">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2m3 0-.8 12H5.8L5 5m3 3v6m4-6v6"/></svg>
-    </button>
+    <strong>Shape</strong>
+    <div class="shape-toolbar-row shape-toolbar-fill-row">
+      <label>Fill <input id="shape-fill-color" type="color" value="#dce8f5" aria-label="Shape fill color"></label>
+      <button id="shape-delete" class="image-icon-button image-delete-action" type="button" aria-label="Delete shape" title="Delete shape">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2m3 0-.8 12H5.8L5 5m3 3v6m4-6v6"/></svg>
+      </button>
+    </div>
+    <div class="shape-toolbar-row shape-toolbar-line-row">
+      <label>Line <input id="shape-line-color" type="color" value="#176b9a" aria-label="Shape line color"></label>
+      <label class="shape-line-width-control">Width <input id="shape-line-width" type="range" min="0" max="10" step="1" value="2"><output id="shape-line-width-value">2 px</output></label>
+    </div>
+    <label>Opacity <input id="shape-opacity" type="range" min="10" max="100" step="5" value="100"><output id="shape-opacity-value">100%</output></label>
+    <label>Text <input id="shape-text" type="text" maxlength="120" placeholder="Add text to shape" aria-label="Text inside shape"></label>
   </div>
   <div id="image-rotation-indicator" class="image-rotation-indicator" role="status" aria-live="polite" hidden></div>
   <div id="watermark-manipulators" class="image-manipulators" aria-label="Watermark resize controls" hidden></div>

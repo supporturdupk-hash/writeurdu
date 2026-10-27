@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="assets/css/home.css">
   <script src="assets/js/home.js" defer></script>
 </head>
-<body>
+<body class="home-page theme-dark">
   <header class="home-header" dir="ltr">
     <a class="home-brand" href="index.html">Urdu Writer</a>
     <nav class="header-nav" aria-label="Main navigation">
@@ -24,7 +24,10 @@
       <a href="about.html">About</a>
       <a href="contact.html">Contact</a>
     </nav>
-    <button id="login-button" class="header-start" type="button">Login</button>
+    <div class="header-actions">
+      <button id="login-button" class="header-start" type="button">Login</button>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Dark theme on" title="Switch to light theme" aria-pressed="true"><span id="theme-icon" aria-hidden="true">☾</span></button>
+    </div>
   </header>
 
   <main>

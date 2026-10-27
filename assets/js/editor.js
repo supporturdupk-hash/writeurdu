@@ -33,6 +33,17 @@
     'Noto Kufi Arabic', 'Reem Kufi', 'Mada', 'Tajawal', 'Cairo',
     'IBM Plex Sans Arabic', 'Changa', 'Lemonada', 'El Messiri', 'Mirza', 'Aref Ruqaa'
   ];
+  const polygonShapeTypes = new Set([
+    'triangle', 'right-triangle', 'diamond', 'pentagon', 'hexagon', 'octagon',
+    'parallelogram', 'trapezoid', 'star', 'arrow', 'chevron', 'plus', 'heart',
+    'double-arrow', 'left-right-arrow', 'left-arrow', 'up-arrow', 'down-arrow', 'pentagon-arrow',
+    'minus', 'multiply', 'divide', 'equal', 'not-equal', 'flow-decision', 'flow-data',
+    'star-4', 'star-8', 'star-16', 'star-24', 'star-32', 'snip-corner-rectangle',
+    'curved-arrow', 'u-turn-arrow', 'elbow-connector', 'pie', 'rectangular-callout',
+    'rounded-rectangle-callout', 'oval-callout', 'cloud-callout', 'sun',
+    'lightning-bolt', 'flow-document', 'flow-preparation', 'flow-delay', 'ribbon',
+    'wave-banner'
+  ]);
   const allowedTags = new Set([
     'A', 'B', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FONT', 'H1', 'H2', 'H3', 'H4',
     'H5', 'H6', 'HR', 'I', 'IMG', 'LI', 'OL', 'P', 'S', 'SPAN', 'STRIKE',
@@ -44,6 +55,7 @@
     const cleanNode = (node) => {
       if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent);
       if (!(node instanceof HTMLElement)) return document.createDocumentFragment();
+      const clean = document.createElement(node.tagName.toLowerCase());
       if (!allowedTags.has(node.tagName)) {
         const fragment = document.createDocumentFragment();
         if (!['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH'].includes(node.tagName)) {
@@ -54,8 +66,6 @@
         }
         return fragment;
       }
-
-      const clean = document.createElement(node.tagName.toLowerCase());
       const documentRegion = node.tagName === 'DIV' && ['header', 'footer'].includes(node.dataset.documentRegion)
         ? node.dataset.documentRegion
         : '';
@@ -68,14 +78,30 @@
         } else if (name === 'class' && node.tagName === 'DIV' &&
           value.split(/\s+/).some((className) => ['page-break', 'column-break', 'editor-shape'].includes(className))) {
           clean.className = value.split(/\s+/).find((className) => ['page-break', 'column-break', 'editor-shape'].includes(className));
-          clean.setAttribute('contenteditable', 'false');
+          if (node.dataset.editorTextbox === 'true') clean.classList.add('editor-textbox');
+          clean.setAttribute('contenteditable', node.dataset.editorTextbox === 'true' ? 'true' : 'false');
         } else if (name === 'data-editor-shape' && node.tagName === 'DIV' && value === 'true') {
           clean.dataset.editorShape = 'true';
+        } else if (name === 'data-editor-textbox' && node.tagName === 'DIV' && value === 'true') {
+          clean.dataset.editorTextbox = 'true';
+          clean.tabIndex = 0;
+        } else if (name === 'data-shape-label' && node.tagName === 'SPAN' && value === 'true') {
+          clean.dataset.shapeLabel = 'true';
+        } else if (name === 'data-shape-geometry' && node.tagName === 'DIV' && ['basic', 'polygon'].includes(value)) {
+          clean.dataset.shapeGeometry = value;
         } else if (name === 'data-shape-type' && node.tagName === 'DIV' &&
           /^[a-z][a-z0-9-]{0,30}$/.test(value)) {
           clean.dataset.shapeType = value;
         } else if (name === 'data-shape-fill' && node.tagName === 'DIV' && /^#[\da-f]{6}$/i.test(value)) {
           clean.dataset.shapeFill = value;
+        } else if (name === 'data-shape-line' && node.tagName === 'DIV' && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.shapeLine = value;
+        } else if (name === 'data-shape-line-width' && node.tagName === 'DIV' && /^(?:[0-9]|10)$/.test(value)) {
+          clean.dataset.shapeLineWidth = value;
+        } else if (name === 'data-shape-opacity' && node.tagName === 'DIV' && /^(?:10|[1-9]\d|100)$/.test(value)) {
+          clean.dataset.shapeOpacity = value;
+        } else if (name === 'data-shape-rotation' && node.tagName === 'DIV' && /^(?:0|[1-9]\d?|[12]\d\d|3[0-5]\d)$/.test(value)) {
+          clean.dataset.shapeRotation = value;
         } else if (name === 'class' && node.tagName === 'DIV' && documentRegion &&
           value.split(/\s+/).includes(`document-${documentRegion}`)) {
           clean.className = `document-${documentRegion}`;
@@ -189,7 +215,7 @@
           clean.dataset.layer = value;
         } else if (name === 'style') {
           const styles = [];
-          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'width', 'height', 'left', 'top', 'opacity', 'z-index', 'table-layout']) {
+          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'border-color', 'border-width', 'position', 'width', 'height', 'left', 'top', 'opacity', 'z-index', 'table-layout']) {
             const styleValue = node.style.getPropertyValue(property).trim();
             if (!styleValue) continue;
             if (property === 'font-family' && fontFamilies.includes(styleValue)) styles.push(`${property}:${styleValue}`);
@@ -199,13 +225,23 @@
                 /^\d+(?:\.\d{1,4})?px$/.test(styleValue) && Number.parseFloat(styleValue) <= 10000)) {
               styles.push(`${property}:${styleValue}`);
             }
+            if (property === 'position' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
+              styleValue === 'absolute') styles.push(`${property}:${styleValue}`);
             if (['left', 'top'].includes(property) &&
               (node.tagName === 'TABLE' && node.dataset.tablePosition === 'free' ||
                 node.tagName === 'IMG' && (node.dataset.imageWrap === 'free' ||
                   node.dataset.watermark === 'image') ||
-                node.tagName === 'DIV' && node.dataset.watermark === 'text') &&
+                node.tagName === 'DIV' && (node.dataset.watermark === 'text' ||
+                  node.dataset.editorShape === 'true')) &&
               /^\d+(?:\.\d{1,4})?px$/.test(styleValue) &&
               Number.parseFloat(styleValue) <= 10000) styles.push(`${property}:${styleValue}`);
+            if (property === 'border-color' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
+              /^#[\da-f]{6}$/i.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'border-width' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
+              /^(?:[0-9]|10)px$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'opacity' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
+              /^(?:0?\.\d{1,2}|1(?:\.0{1,2})?)$/.test(styleValue) &&
+              Number(styleValue) >= 0.1 && Number(styleValue) <= 1) styles.push(`${property}:${styleValue}`);
             if (property === 'opacity' && ['DIV', 'IMG'].includes(node.tagName) &&
               ['text', 'image'].includes(node.dataset.watermark) &&
               /^(?:0?\.\d{1,2}|1(?:\.0{1,2})?)$/.test(styleValue) &&
@@ -245,6 +281,23 @@
         }
         if (clean.dataset.borderWidth) clean.style.setProperty('--table-border-width', `${clean.dataset.borderWidth}px`);
         if (clean.dataset.borderColor) clean.style.setProperty('--table-border-color', clean.dataset.borderColor);
+      }
+      if (clean.tagName === 'DIV' && clean.dataset.editorShape === 'true') {
+        const fill = clean.dataset.shapeFill || '#dce8f5';
+        const line = clean.dataset.shapeLine || '#176b9a';
+        const lineWidth = clean.dataset.shapeLineWidth ?? 2;
+        clean.dataset.shapeGeometry = polygonShapeTypes.has(clean.dataset.shapeType) ? 'polygon' : 'basic';
+        clean.style.backgroundColor = clean.dataset.shapeGeometry === 'polygon' || clean.dataset.shapeType === 'line'
+          ? line
+          : fill;
+        clean.style.borderColor = line;
+        clean.style.borderWidth = `${lineWidth}px`;
+        clean.style.setProperty('--shape-line-color', clean.dataset.shapeLine || '#176b9a');
+        clean.style.setProperty('--shape-fill-color', fill);
+        clean.style.setProperty('--shape-border-width', `${lineWidth}px`);
+        clean.style.opacity = String(Number(clean.dataset.shapeOpacity ?? 100) / 100);
+        const rotation = Number(clean.dataset.shapeRotation || 0);
+        if (rotation) clean.style.rotate = `${rotation}deg`;
       }
       if (clean.tagName === 'IMG') {
         const rotation = Number(clean.dataset.imageRotation || 0);
@@ -1993,13 +2046,30 @@
     );
   });
   const shapeGroups = [
-    ['Lines', [['line', 'Line'], ['arrow', 'Arrow'], ['double-arrow', 'Double arrow'], ['elbow-connector', 'Elbow connector'], ['curved-arrow', 'Curved arrow']]],
-    ['Rectangles', [['rectangle', 'Rectangle'], ['rounded-rectangle', 'Rounded rectangle'], ['snip-corner-rectangle', 'Snip corner rectangle'], ['round-one-corner-rectangle', 'Round one corner rectangle'], ['parallelogram', 'Parallelogram'], ['trapezoid', 'Trapezoid']]],
-    ['Basic Shapes', [['ellipse', 'Oval'], ['triangle', 'Triangle'], ['right-triangle', 'Right triangle'], ['diamond', 'Diamond'], ['pentagon', 'Pentagon'], ['hexagon', 'Hexagon'], ['octagon', 'Octagon'], ['star', '5-point star'], ['heart', 'Heart'], ['cloud', 'Cloud'], ['plus', 'Plus'], ['pie', 'Pie'], ['arc', 'Arc'], ['smiley-face', 'Smiley face'], ['moon', 'Moon'], ['sun', 'Sun'], ['lightning-bolt', 'Lightning bolt']]],
-    ['Block Arrows', [['arrow', 'Right arrow'], ['left-arrow', 'Left arrow'], ['up-arrow', 'Up arrow'], ['down-arrow', 'Down arrow'], ['left-right-arrow', 'Left-right arrow'], ['chevron', 'Chevron'], ['pentagon', 'Pentagon arrow'], ['u-turn-arrow', 'U-turn arrow']]],
-    ['Equation Shapes', [['plus', 'Plus'], ['minus', 'Minus'], ['multiply', 'Multiply'], ['divide', 'Divide'], ['equal', 'Equal'], ['not-equal', 'Not equal']]],
-    ['Flowchart', [['flow-process', 'Process'], ['flow-decision', 'Decision'], ['flow-data', 'Data'], ['flow-document', 'Document'], ['flow-terminal', 'Terminator'], ['flow-preparation', 'Preparation'], ['flow-delay', 'Delay'], ['flow-storage', 'Storage']]],
-    ['Stars & Banners', [['star', '5-point star'], ['star-4', '4-point star'], ['star-8', '8-point star'], ['star-16', '16-point star'], ['star-24', '24-point star'], ['star-32', '32-point star'], ['ribbon', 'Ribbon'], ['wave-banner', 'Wave banner']]]
+    ['Basic Shapes', [
+      ['rectangle', 'Rectangle'],
+      ['square', 'Square'],
+      ['circle', 'Circle'],
+      ['ellipse', 'Oval'],
+      ['triangle', 'Triangle'],
+      ['diamond', 'Diamond'],
+      ['pentagon', 'Pentagon'],
+      ['hexagon', 'Hexagon'],
+      ['star', 'Star'],
+      ['heart', 'Heart'],
+      ['arrow', 'Arrow'],
+      ['chevron', 'Chevron'],
+      ['line', 'Line']
+    ]],
+    ['Extras', [
+      ['rounded-rectangle', 'Rounded rectangle'],
+      ['trapezoid', 'Trapezoid'],
+      ['parallelogram', 'Parallelogram'],
+      ['plus', 'Plus'],
+      ['cloud', 'Cloud'],
+      ['rectangular-callout', 'Callout'],
+      ['oval-callout', 'Oval callout']
+    ]]
   ];
   const shapeLibrary = document.getElementById('shape-library');
   shapeGroups.forEach(([category, shapes]) => {
@@ -2018,6 +2088,7 @@
       const preview = document.createElement('span');
       preview.className = 'shape-preview';
       preview.dataset.preview = type;
+      if (polygonShapeTypes.has(type)) preview.dataset.shapeGeometry = 'polygon';
       button.append(preview);
       grid.append(button);
     });
@@ -2033,10 +2104,45 @@
     const type = button.dataset.insertShape;
     if (!/^[a-z][a-z0-9-]{0,30}$/.test(type)) return;
     closeInsertMenus();
-    insertHtml(`<div class="editor-shape" contenteditable="false" data-editor-shape="true" data-shape-type="${type}" data-shape-fill="#176b9a" style="width:140px;height:90px"></div><p><br></p>`);
+    const width = type.endsWith('-button') ? 90 : ['square', 'circle'].includes(type) ? 100 : 140;
+    const height = type === 'line' ? 2 : 90;
+    const shapeHeight = type === 'square' || type === 'circle' ? 100 : height;
+    const geometry = polygonShapeTypes.has(type) ? 'polygon' : 'basic';
+    const lineColor = '#176b9a';
+    const fillColor = '#dce8f5';
+    const backgroundColor = geometry === 'polygon' || type === 'line' ? lineColor : fillColor;
+    insertHtml(`<div class="editor-shape" contenteditable="false" data-editor-shape="true" data-shape-type="${type}" data-shape-geometry="${geometry}" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="2" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${shapeHeight}px;background-color:${backgroundColor};border-color:${lineColor};border-width:2px"></div><p><br></p>`);
     const shapes = editor.querySelectorAll('.editor-shape');
     const shape = shapes[shapes.length - 1];
-    if (shape) showShapeToolbar(shape);
+    if (shape) {
+      shape.style.width = `${width}px`;
+      shape.style.height = `${shapeHeight}px`;
+      shape.style.setProperty('--shape-line-color', lineColor);
+      shape.style.setProperty('--shape-fill-color', fillColor);
+      shape.style.setProperty('--shape-border-width', `${shape.dataset.shapeLineWidth}px`);
+      ensureShapePosition(shape);
+      showShapeToolbar(shape);
+    }
+  });
+  document.getElementById('text-box-button').addEventListener('click', () => {
+    const width = 240;
+    const height = 100;
+    const left = Math.max(0, Math.round((editor.clientWidth - width) / 2));
+    const top = Math.max(0, Math.round(editor.scrollTop + 80));
+    const lineColor = '#176b9a';
+    const fillColor = '#ffffff';
+    insertHtml(`<div class="editor-shape editor-textbox" tabindex="0" contenteditable="true" dir="auto" data-editor-shape="true" data-editor-textbox="true" data-shape-type="rectangle" data-shape-geometry="basic" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="1" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;background-color:${fillColor};border-color:${lineColor};border-width:1px"><span data-shape-label="true">Type here</span></div><p><br></p>`);
+    const textBox = editor.querySelectorAll('.editor-textbox');
+    const activeTextBox = textBox[textBox.length - 1];
+    if (!activeTextBox) return;
+    showShapeToolbar(activeTextBox);
+    activeTextBox.focus();
+    const range = document.createRange();
+    range.selectNodeContents(activeTextBox);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    activeTextBox.focus({ preventScroll: true });
   });
   const insertMenus = [
     { button: document.getElementById('table-button'), menu: document.getElementById('table-menu') },
@@ -2852,28 +2958,111 @@
     optionsHandle.style.top = `${optionsPoint.top}px`;
     imageManipulators.append(optionsHandle);
   };
+  const ensureShapePosition = (shape) => {
+    if (shape.style.left && shape.style.top) return;
+    const bounds = shape.getBoundingClientRect();
+    const pageBounds = editor.getBoundingClientRect();
+    const scaleX = pageBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    shape.style.position = 'absolute';
+    shape.style.left = `${Math.max(0, (bounds.left - pageBounds.left) / scaleX)}px`;
+    shape.style.top = `${Math.max(0, (bounds.top - pageBounds.top) / scaleY)}px`;
+  };
+  const getShapeHandlePoint = (shape, x, y) => {
+    const bounds = shape.getBoundingClientRect();
+    const pageBounds = editor.getBoundingClientRect();
+    const scaleX = pageBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    const rotation = (Number(shape.dataset.shapeRotation) || 0) * Math.PI / 180;
+    const centerX = (bounds.left + bounds.right) / 2;
+    const centerY = (bounds.top + bounds.bottom) / 2;
+    return {
+      left: centerX + x * scaleX * Math.cos(rotation) - y * scaleY * Math.sin(rotation),
+      top: centerY + x * scaleX * Math.sin(rotation) + y * scaleY * Math.cos(rotation),
+      scaleX,
+      scaleY,
+      rotation
+    };
+  };
+  const getShapeResizePoints = (shape) => {
+    if (shape.dataset.shapeType === 'line') return [{ x: -1, y: 0 }, { x: 1, y: 0 }];
+    const clipPath = getComputedStyle(shape).clipPath;
+    const polygon = clipPath.match(/^polygon\((.*)\)$/i);
+    if (polygon) {
+      const points = polygon[1].split(',').map((point) => {
+        const [x, y] = point.trim().split(/\s+/);
+        const toNormalized = (value, size) => {
+          const coordinate = Number.parseFloat(value);
+          const ratio = value.endsWith('%') ? coordinate / 100 : coordinate / size;
+          return Math.max(-1, Math.min(1, ratio * 2 - 1));
+        };
+        return { x: toNormalized(x, shape.offsetWidth), y: toNormalized(y, shape.offsetHeight) };
+      });
+      if (points.length >= 3 && points.length <= 64) return points;
+    }
+    return [
+      { x: -1, y: -1 }, { x: 0, y: -1 }, { x: 1, y: -1 },
+      { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 },
+      { x: -1, y: 1 }, { x: -1, y: 0 }
+    ];
+  };
   const refreshShapeManipulators = (shape) => {
     shapeManipulators.replaceChildren();
     shapeManipulators.hidden = !shape || !editor.contains(shape);
     if (shapeManipulators.hidden) return;
-    const bounds = shape.getBoundingClientRect();
-    [
-      ['nw', bounds.left, bounds.top],
-      ['ne', bounds.right, bounds.top],
-      ['se', bounds.right, bounds.bottom],
-      ['sw', bounds.left, bounds.bottom]
-    ].forEach(([corner, left, top]) => {
+    const width = shape.offsetWidth;
+    const height = shape.offsetHeight;
+    getShapeResizePoints(shape).forEach(({ x, y }, index) => {
+      const horizontal = x < -0.01 ? 'w' : x > 0.01 ? 'e' : '';
+      const vertical = y < -0.01 ? 'n' : y > 0.01 ? 's' : '';
+      const corner = `${vertical}${horizontal}` || 'point';
       const handle = document.createElement('button');
       handle.type = 'button';
       handle.className = `image-resize-handle image-resize-${corner}`;
-      handle.dataset.shapeResizeCorner = corner;
-      handle.setAttribute('aria-label', `Resize shape from ${corner}`);
-      handle.style.left = `${left}px`;
-      handle.style.top = `${top}px`;
+      handle.dataset.shapeResizeX = String(x);
+      handle.dataset.shapeResizeY = String(y);
+      handle.setAttribute('aria-label', `Resize shape at point ${index + 1}`);
+      const point = getShapeHandlePoint(shape, x * width / 2, y * height / 2);
+      handle.style.left = `${point.left}px`;
+      handle.style.top = `${point.top}px`;
       shapeManipulators.append(handle);
     });
+    const moveHandle = document.createElement('button');
+    moveHandle.type = 'button';
+    moveHandle.className = 'shape-move-handle';
+    moveHandle.dataset.shapeMoveHandle = 'true';
+    moveHandle.setAttribute('aria-label', 'Move shape');
+    moveHandle.title = 'Move shape';
+    moveHandle.textContent = '⠿';
+    const movePoint = getShapeHandlePoint(shape, 0, -height / 2 - 28);
+    moveHandle.style.left = `${movePoint.left}px`;
+    moveHandle.style.top = `${movePoint.top}px`;
+    shapeManipulators.append(moveHandle);
+    const rotateHandle = document.createElement('button');
+    rotateHandle.type = 'button';
+    rotateHandle.className = 'image-rotate-handle';
+    rotateHandle.dataset.shapeRotateHandle = 'true';
+    rotateHandle.setAttribute('aria-label', 'Rotate shape');
+    rotateHandle.textContent = '↻';
+    const rotatePoint = getShapeHandlePoint(shape, width / 2 + 26, 0);
+    rotateHandle.style.left = `${rotatePoint.left}px`;
+    rotateHandle.style.top = `${rotatePoint.top}px`;
+    shapeManipulators.append(rotateHandle);
+
+    const optionsHandle = document.createElement('button');
+    optionsHandle.type = 'button';
+    optionsHandle.className = 'image-options-handle';
+    optionsHandle.dataset.shapeOptionsHandle = 'true';
+    optionsHandle.setAttribute('aria-label', 'More shape options');
+    optionsHandle.title = 'More shape options';
+    optionsHandle.textContent = '•••';
+    const optionsPoint = getShapeHandlePoint(shape, -width / 2 - 28, 0);
+    optionsHandle.style.left = `${optionsPoint.left}px`;
+    optionsHandle.style.top = `${optionsPoint.top}px`;
+    shapeManipulators.append(optionsHandle);
   };
   const showShapeToolbar = (shape) => {
+    ensureShapePosition(shape);
     if (activeImage) activeImage.classList.remove('image-selected', 'image-crop-active');
     activeImage = null;
     imageCropMode = false;
@@ -2893,57 +3082,251 @@
     if (activeShape && activeShape !== shape) activeShape.classList.remove('shape-selected');
     activeShape = shape;
     activeShape.classList.add('shape-selected');
-    shapeToolbar.hidden = false;
-    document.getElementById('shape-fill-color').value = shape.dataset.shapeFill || '#176b9a';
-    positionContextToolbar(shapeToolbar, shape.getBoundingClientRect());
+    shapeToolbar.hidden = true;
+    document.getElementById('shape-fill-color').value = shape.dataset.shapeFill || '#dce8f5';
+    document.getElementById('shape-line-color').value = shape.dataset.shapeLine || '#176b9a';
+    const lineWidth = Number(shape.dataset.shapeLineWidth ?? 2);
+    document.getElementById('shape-line-width').value = String(lineWidth);
+    document.getElementById('shape-line-width-value').value = `${lineWidth} px`;
+    const opacity = Number(shape.dataset.shapeOpacity ?? 100);
+    document.getElementById('shape-opacity').value = String(opacity);
+    document.getElementById('shape-opacity-value').value = `${opacity}%`;
+    document.getElementById('shape-text').value = shape.querySelector('[data-shape-label="true"]')?.textContent || '';
     refreshShapeManipulators(shape);
   };
   let shapeResizeDrag = null;
-  shapeManipulators.addEventListener('pointerdown', (event) => {
-    const handle = event.target.closest('[data-shape-resize-corner]');
-    if (!handle || !activeShape || !editor.contains(activeShape)) return;
-    event.preventDefault();
-    handle.setPointerCapture(event.pointerId);
-    const bounds = activeShape.getBoundingClientRect();
-    const pageScale = editor.getBoundingClientRect().width / Math.max(editor.offsetWidth, 1);
-    shapeResizeDrag = {
+  let shapeMoveDrag = null;
+  let shapeRotateDrag = null;
+  const setShapeRotation = (shape, angle) => {
+    const rotation = (Math.round(angle) % 360 + 360) % 360;
+    shape.dataset.shapeRotation = String(rotation);
+    shape.style.rotate = `${rotation}deg`;
+    imageRotationIndicator.textContent = `${rotation}°`;
+    imageRotationIndicator.hidden = false;
+    const point = getShapeHandlePoint(shape, 0, -shape.offsetHeight / 2 - 34);
+    imageRotationIndicator.style.left = `${point.left}px`;
+    imageRotationIndicator.style.top = `${point.top}px`;
+  };
+  const startShapeMove = (shape, event) => {
+    ensureShapePosition(shape);
+    const pageBounds = editor.getBoundingClientRect();
+    shapeMoveDrag = {
+      shape,
       pointerId: event.pointerId,
-      corner: handle.dataset.shapeResizeCorner,
       startX: event.clientX,
       startY: event.clientY,
-      width: activeShape.offsetWidth,
-      height: activeShape.offsetHeight,
-      scale: pageScale,
-      bounds
+      left: Number.parseFloat(shape.style.left) || 0,
+      top: Number.parseFloat(shape.style.top) || 0,
+      scaleX: pageBounds.width / Math.max(editor.offsetWidth, 1),
+      scaleY: pageBounds.height / Math.max(editor.offsetHeight, 1),
+      moved: false
+    };
+  };
+  editor.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const shape = event.target.closest('.editor-shape');
+    if (!shape || !editor.contains(shape)) return;
+    event.stopPropagation();
+    ensureShapePosition(shape);
+    showShapeToolbar(shape);
+  });
+  shapeManipulators.addEventListener('pointerdown', (event) => {
+    const moveHandle = event.target.closest('[data-shape-move-handle]');
+    if (moveHandle && activeShape && editor.contains(activeShape)) {
+      event.preventDefault();
+      event.stopPropagation();
+      startShapeMove(activeShape, event);
+      return;
+    }
+    const optionsHandle = event.target.closest('[data-shape-options-handle]');
+    if (optionsHandle) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    const rotateHandle = event.target.closest('[data-shape-rotate-handle]');
+    if (rotateHandle && activeShape && editor.contains(activeShape)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = activeShape.getBoundingClientRect();
+      shapeRotateDrag = {
+        shape: activeShape,
+        pointerId: event.pointerId,
+        centerX: (bounds.left + bounds.right) / 2,
+        centerY: (bounds.top + bounds.bottom) / 2,
+        lastPointerAngle: Math.atan2(event.clientY - (bounds.top + bounds.bottom) / 2,
+          event.clientX - (bounds.left + bounds.right) / 2) * 180 / Math.PI,
+        rotation: Number(activeShape.dataset.shapeRotation) || 0,
+        toolbarWasHidden: shapeToolbar.hidden
+      };
+      shapeManipulators.hidden = true;
+      shapeToolbar.hidden = true;
+      activeShape.classList.remove('shape-selected');
+      return;
+    }
+    const handle = event.target.closest('.image-resize-handle[data-shape-resize-x]');
+    if (!handle || !activeShape || !editor.contains(activeShape)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    ensureShapePosition(activeShape);
+    const width = activeShape.offsetWidth;
+    const height = activeShape.offsetHeight;
+    const handleX = Number(handle.dataset.shapeResizeX);
+    const handleY = Number(handle.dataset.shapeResizeY);
+    const fixedPoint = getShapeHandlePoint(activeShape, -handleX * width / 2, -handleY * height / 2);
+    shapeResizeDrag = {
+      pointerId: event.pointerId,
+      handleX,
+      handleY,
+      startX: event.clientX,
+      startY: event.clientY,
+      width,
+      height,
+      scaleX: fixedPoint.scaleX,
+      scaleY: fixedPoint.scaleY,
+      rotation: fixedPoint.rotation,
+      fixedPoint: { left: fixedPoint.left, top: fixedPoint.top }
     };
   });
   document.addEventListener('pointermove', (event) => {
+    if (shapeMoveDrag && shapeMoveDrag.pointerId === event.pointerId) {
+      const drag = shapeMoveDrag;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
+      drag.moved = true;
+      const width = drag.shape.offsetWidth;
+      const height = drag.shape.offsetHeight;
+      drag.shape.style.left = `${Math.max(0, Math.min(editor.offsetWidth - width,
+        drag.left + dx / drag.scaleX))}px`;
+      drag.shape.style.top = `${Math.max(0, Math.min(editor.offsetHeight - height,
+        drag.top + dy / drag.scaleY))}px`;
+      refreshShapeManipulators(drag.shape);
+      if (!shapeToolbar.hidden) positionContextToolbar(shapeToolbar, drag.shape.getBoundingClientRect());
+      event.preventDefault();
+      return;
+    }
+    if (shapeRotateDrag && shapeRotateDrag.pointerId === event.pointerId) {
+      const drag = shapeRotateDrag;
+      const angle = Math.atan2(event.clientY - drag.centerY, event.clientX - drag.centerX) * 180 / Math.PI;
+      let delta = angle - drag.lastPointerAngle;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      drag.rotation += delta;
+      drag.lastPointerAngle = angle;
+      setShapeRotation(drag.shape, drag.rotation);
+      event.preventDefault();
+      return;
+    }
     if (!shapeResizeDrag || shapeResizeDrag.pointerId !== event.pointerId || !activeShape) return;
     const drag = shapeResizeDrag;
-    const dx = (event.clientX - drag.startX) / drag.scale;
-    const dy = (event.clientY - drag.startY) / drag.scale;
-    const widthDelta = drag.corner.endsWith('e') ? dx : -dx;
-    const heightDelta = drag.corner.startsWith('s') ? dy : -dy;
-    activeShape.style.width = `${Math.max(20, Math.min(10000, drag.width + widthDelta))}px`;
-    activeShape.style.height = `${Math.max(20, Math.min(10000, drag.height + heightDelta))}px`;
+    const screenX = event.clientX - drag.startX;
+    const screenY = event.clientY - drag.startY;
+    const dx = (screenX * Math.cos(drag.rotation) + screenY * Math.sin(drag.rotation)) / drag.scaleX;
+    const dy = (-screenX * Math.sin(drag.rotation) + screenY * Math.cos(drag.rotation)) / drag.scaleY;
+    const widthDelta = Math.abs(drag.handleX) > 0.01 ? 2 * dx / drag.handleX : 0;
+    const heightDelta = Math.abs(drag.handleY) > 0.01 ? 2 * dy / drag.handleY : 0;
+    const width = Math.abs(drag.handleX) > 0.01
+      ? Math.max(20, Math.min(10000, drag.width + widthDelta))
+      : drag.width;
+    const height = Math.abs(drag.handleY) > 0.01
+      ? Math.max(activeShape.dataset.shapeType === 'line' ? 1 : 20, Math.min(10000, drag.height + heightDelta))
+      : drag.height;
+    activeShape.style.width = `${width}px`;
+    activeShape.style.height = `${height}px`;
+    const anchorX = -drag.handleX * width / 2;
+    const anchorY = -drag.handleY * height / 2;
+    const centerX = drag.fixedPoint.left - (
+      anchorX * drag.scaleX * Math.cos(drag.rotation) - anchorY * drag.scaleY * Math.sin(drag.rotation));
+    const centerY = drag.fixedPoint.top - (
+      anchorX * drag.scaleX * Math.sin(drag.rotation) + anchorY * drag.scaleY * Math.cos(drag.rotation));
+    const pageBounds = editor.getBoundingClientRect();
+    activeShape.style.left = `${(centerX - pageBounds.left) / drag.scaleX - width / 2}px`;
+    activeShape.style.top = `${(centerY - pageBounds.top) / drag.scaleY - height / 2}px`;
     refreshShapeManipulators(activeShape);
     positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
     event.preventDefault();
   });
   const finishShapeResize = (event) => {
+    if (shapeMoveDrag && shapeMoveDrag.pointerId === event.pointerId) {
+      if (shapeMoveDrag.moved) scheduleSave();
+      shapeMoveDrag = null;
+    }
+    if (shapeRotateDrag && shapeRotateDrag.pointerId === event.pointerId) {
+      const drag = shapeRotateDrag;
+      shapeRotateDrag = null;
+      imageRotationIndicator.hidden = true;
+      if (editor.contains(drag.shape)) {
+        drag.shape.classList.add('shape-selected');
+        shapeToolbar.hidden = drag.toolbarWasHidden;
+        refreshShapeManipulators(drag.shape);
+        if (!shapeToolbar.hidden) positionContextToolbar(shapeToolbar, drag.shape.getBoundingClientRect());
+        scheduleSave();
+      }
+    }
     if (!shapeResizeDrag || shapeResizeDrag.pointerId !== event.pointerId) return;
     shapeResizeDrag = null;
     if (activeShape && editor.contains(activeShape)) scheduleSave();
   };
   document.addEventListener('pointerup', finishShapeResize);
   document.addEventListener('pointercancel', finishShapeResize);
+  shapeManipulators.addEventListener('click', (event) => {
+    if (!event.target.closest('[data-shape-options-handle]') || !activeShape || !editor.contains(activeShape)) return;
+    shapeToolbar.hidden = !shapeToolbar.hidden;
+    if (!shapeToolbar.hidden) positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
+  });
   document.getElementById('shape-fill-color').addEventListener('input', (event) => {
     if (!activeShape || !editor.contains(activeShape)) return;
     activeShape.dataset.shapeFill = event.currentTarget.value;
-    activeShape.style.backgroundColor = event.currentTarget.value;
+    activeShape.style.setProperty('--shape-fill-color', event.currentTarget.value);
+    if (activeShape.dataset.shapeGeometry !== 'polygon' && activeShape.dataset.shapeType !== 'line') {
+      activeShape.style.backgroundColor = event.currentTarget.value;
+    }
     scheduleSave();
   });
-  document.getElementById('shape-delete').addEventListener('click', () => {
+  document.getElementById('shape-line-color').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    activeShape.dataset.shapeLine = event.currentTarget.value;
+    activeShape.style.setProperty('--shape-line-color', event.currentTarget.value);
+    if (activeShape.dataset.shapeGeometry === 'polygon' || activeShape.dataset.shapeType === 'line') {
+      activeShape.style.backgroundColor = event.currentTarget.value;
+    } else {
+      activeShape.style.borderColor = event.currentTarget.value;
+    }
+    scheduleSave();
+  });
+  document.getElementById('shape-line-width').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    const width = Number(event.currentTarget.value);
+    activeShape.dataset.shapeLineWidth = String(width);
+    activeShape.style.borderWidth = `${width}px`;
+    activeShape.style.setProperty('--shape-border-width', `${width}px`);
+    if (activeShape.dataset.shapeType === 'line') {
+      activeShape.style.height = `${Math.max(1, width)}px`;
+    }
+    document.getElementById('shape-line-width-value').value = `${width} px`;
+    scheduleSave();
+  });
+  document.getElementById('shape-opacity').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    const opacity = Number(event.currentTarget.value);
+    activeShape.dataset.shapeOpacity = String(opacity);
+    activeShape.style.opacity = String(opacity / 100);
+    document.getElementById('shape-opacity-value').value = `${opacity}%`;
+    scheduleSave();
+  });
+  document.getElementById('shape-text').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    let label = activeShape.querySelector('[data-shape-label="true"]');
+    if (!label) {
+      label = document.createElement('span');
+      label.dataset.shapeLabel = 'true';
+      activeShape.append(label);
+    }
+    label.textContent = event.currentTarget.value;
+    scheduleSave();
+  });
+  const removeSelectedShape = () => {
     if (activeShape && editor.contains(activeShape)) activeShape.remove();
     activeShape = null;
     shapeToolbar.hidden = true;
@@ -2951,7 +3334,8 @@
     shapeManipulators.replaceChildren();
     updateCounts();
     scheduleSave();
-  });
+  };
+  document.getElementById('shape-delete').addEventListener('click', removeSelectedShape);
   const setImageWrap = (image, wrap) => {
     if (wrap === 'free') {
       const bounds = image.getBoundingClientRect();
@@ -3225,7 +3609,6 @@
   editor.addEventListener('click', (event) => {
     const shape = event.target.closest('.editor-shape');
     if (shape && editor.contains(shape)) {
-      event.preventDefault();
       showShapeToolbar(shape);
       return;
     }
@@ -4685,6 +5068,14 @@
       event.preventDefault();
       action();
     };
+    const shapeSelected = activeShape && editor.contains(activeShape) &&
+      !event.target.closest('input, textarea, select');
+    const editingShapeText = shapeSelected && activeShape.isContentEditable &&
+      (activeShape === event.target || activeShape.contains(event.target));
+    if (shapeSelected && !editingShapeText && (key === 'delete' || key === 'backspace')) {
+      prevent(removeSelectedShape);
+      return;
+    }
     const imageSelected = activeImage && editor.contains(activeImage) &&
       !event.target.closest('input, textarea, select, button');
     const watermarkSelected = activeWatermark && editor.contains(activeWatermark) &&

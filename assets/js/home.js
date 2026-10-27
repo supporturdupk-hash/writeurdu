@@ -1,9 +1,29 @@
 (() => {
   const STORAGE_KEY = 'urdu-writer-document-v1';
   const DOCUMENTS_KEY = 'urdu-writer-documents-v1';
+  const THEME_KEY = 'urdu-writer-home-theme';
   const editorUrl = 'editor.html';
   const toast = document.getElementById('home-toast');
+  const themeToggle = document.getElementById('theme-toggle');
+  const themeIcon = document.getElementById('theme-icon');
   let toastTimer;
+
+  function applyTheme(isDark) {
+    document.body.classList.toggle('theme-dark', isDark);
+    document.documentElement.classList.toggle('theme-dark', isDark);
+    themeToggle.setAttribute('aria-pressed', String(isDark));
+    themeToggle.setAttribute('aria-label', `${isDark ? 'Dark' : 'Light'} theme on`);
+    themeToggle.title = `Switch to ${isDark ? 'light' : 'dark'} theme`;
+    themeIcon.textContent = isDark ? '☾' : '☼';
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+  }
+
+  applyTheme(localStorage.getItem(THEME_KEY) !== 'light');
+  themeToggle.addEventListener('click', () => {
+    const isDark = !document.body.classList.contains('theme-dark');
+    applyTheme(isDark);
+    localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+  });
 
   function showToast(message) {
     toast.textContent = message;
