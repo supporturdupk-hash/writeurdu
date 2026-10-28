@@ -13,7 +13,8 @@
   let landscape = false;
   let pageSize = 'A4';
   let customPageDimensions = null;
-  let lineNumberingMode = 'none';
+  let pageBorderStyle = 'none';
+  let pageBorderColor = '#697586';
   let toastTimer;
   let savedEditorRange = null;
   let lastFormattedSpan = null;
@@ -359,10 +360,11 @@
     const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
     const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
     const pageStride = pageHeight + pageGap;
+    const pageTopMargin = rulerPixels(getComputedStyle(editor).paddingTop);
     editor.style.minHeight = `${pageHeight * (pageBreaks.length + 1) + pageGap * pageBreaks.length}px`;
     pageBreaks.forEach((pageBreak) => {
       const pageOffset = ((pageBreak.offsetTop % pageStride) + pageStride) % pageStride;
-      const spaceToNextPage = pageStride - pageOffset;
+      const spaceToNextPage = pageStride - pageOffset + pageTopMargin;
       pageBreak.style.setProperty('--page-break-space', `${spaceToNextPage}px`);
     });
   }
@@ -617,7 +619,33 @@
   const horizontalRuler = document.getElementById('horizontal-ruler');
   const verticalRuler = document.getElementById('vertical-ruler');
   const pageFrame = document.querySelector('.page-frame');
+  const documentStage = document.querySelector('.document-stage');
+  const landscapeScrollbar = document.getElementById('landscape-scrollbar');
   const rulerIndent = { firstLine: 0, paragraphStart: 0, paragraphEnd: 0 };
+
+  function syncLandscapeScrollbar() {
+    const shouldShow = document.body.classList.contains('landscape-page') &&
+      document.body.classList.contains('landscape-keyboard-open') &&
+      documentStage.scrollWidth > documentStage.clientWidth + 1;
+    landscapeScrollbar.hidden = !shouldShow;
+    if (!shouldShow) return;
+    landscapeScrollbar.firstElementChild.style.width = `${documentStage.scrollWidth}px`;
+    if (landscapeScrollbar.scrollLeft !== documentStage.scrollLeft) {
+      landscapeScrollbar.scrollLeft = documentStage.scrollLeft;
+    }
+    horizontalRuler.parentElement.scrollLeft = documentStage.scrollLeft;
+  }
+  landscapeScrollbar.addEventListener('scroll', () => {
+    if (landscapeScrollbar.hidden || documentStage.scrollLeft === landscapeScrollbar.scrollLeft) return;
+    documentStage.scrollLeft = landscapeScrollbar.scrollLeft;
+  });
+  documentStage.addEventListener('scroll', () => {
+    if (landscapeScrollbar.hidden) return;
+    if (landscapeScrollbar.scrollLeft !== documentStage.scrollLeft) {
+      landscapeScrollbar.scrollLeft = documentStage.scrollLeft;
+    }
+    horizontalRuler.parentElement.scrollLeft = documentStage.scrollLeft;
+  });
 
   function rulerPixels(value) {
     const parsed = Number.parseFloat(value);
@@ -678,6 +706,7 @@
     setMarker('paragraph-end', paragraphEnd);
 
     syncVerticalRuler();
+    syncLandscapeScrollbar();
   }
 
   function rulerDragValue(event, track, vertical) {
@@ -753,6 +782,8 @@
         id: activeDocumentId,
         name: nameInput.value.trim() || 'Untitled document',
         html: editor.innerHTML,
+        pageBorderStyle,
+        pageBorderColor,
         updatedAt: new Date().toISOString()
       };
       const storedDocuments = localStorage.getItem(DOCUMENTS_KEY);
@@ -779,6 +810,8 @@
         id: activeDocumentId,
         name: nameInput.value.trim() || 'Untitled document',
         html: editor.innerHTML,
+        pageBorderStyle,
+        pageBorderColor,
         updatedAt: new Date().toISOString()
       };
       localStorage.setItem(`${RECOVERY_KEY_PREFIX}${activeDocumentId}`, JSON.stringify(draft));
@@ -804,6 +837,18 @@
     saveLocally();
   }
 
+  function applyPageBorder() {
+    if (pageBorderStyle === 'none') delete editor.dataset.pageBorder;
+    else editor.dataset.pageBorder = pageBorderStyle;
+    editor.style.setProperty('--page-border-color', pageBorderColor);
+    editor.style.setProperty('--page-border-width', '2px');
+    document.querySelectorAll('[data-page-border]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.pageBorder === pageBorderStyle));
+      const preview = button.querySelector('.page-border-preview');
+      if (preview) preview.style.borderColor = pageBorderColor;
+    });
+  }
+
   window.addEventListener('pagehide', flushPendingSave);
   window.addEventListener('beforeunload', flushPendingSave);
   document.addEventListener('visibilitychange', () => {
@@ -817,6 +862,9 @@
       activeDocumentId = createDocumentId();
       nameInput.value = 'Untitled document';
       editor.innerHTML = '<p><br></p>';
+      pageBorderStyle = 'none';
+      pageBorderColor = '#697586';
+      applyPageBorder();
       window.history.replaceState({}, document.title, `${window.location.pathname}?document=${encodeURIComponent(activeDocumentId)}`);
       return;
     }
@@ -862,6 +910,14 @@
       if (typeof documentData.name === 'string' && typeof documentData.html === 'string') {
         nameInput.value = documentData.name;
         editor.innerHTML = sanitizeDocumentHtml(documentData.html);
+        pageBorderStyle = ['none', 'solid', 'thick', 'double', 'dashed', 'dotted'].includes(documentData.pageBorderStyle)
+          ? documentData.pageBorderStyle
+          : 'none';
+        pageBorderColor = /^#[\da-f]{6}$/i.test(documentData.pageBorderColor || '')
+          ? documentData.pageBorderColor
+          : '#697586';
+        applyPageBorder();
+        document.getElementById('page-border-color-input').value = pageBorderColor;
         if (recoveredDraft) setSaveStatus('Recovered');
       } else {
         throw new Error('The saved document does not have a valid format.');
@@ -927,6 +983,7 @@
   document.addEventListener('selectionchange', () => {
     rememberEditorSelection();
     cleanPendingSizeMarkers();
+    updateTableCaretOverlay();
   });
 
   function focusEditor() {
@@ -1169,6 +1226,8 @@
     keyboardToggle.setAttribute('aria-expanded', String(expanded));
     onscreenKeyboard.hidden = !expanded;
     keyboardToggle.closest('.keyboard-sidebar').classList.toggle('keyboard-open', expanded);
+    document.body.classList.toggle('landscape-keyboard-open', expanded);
+    syncRulers();
   });
   document.querySelectorAll('[data-keyboard-layout]').forEach((tab) => {
     tab.addEventListener('click', () => {
@@ -1184,6 +1243,10 @@
   });
   const phoneticKeyboard = document.getElementById('phonetic-keyboard');
   const physicalKeyboardRows = ['1234567890-=', 'qwertyuiop[]\\', "asdfghjkl;'", 'zxcvbnm,./'];
+  let phoneticShiftActive = false;
+  let pendingHamza = false;
+  let pendingHamzaRange = null;
+  const phoneticShiftToggle = document.getElementById('phonetic-shift-toggle');
   const renderPhoneticKeyboard = () => {
     phoneticKeyboard.replaceChildren();
     physicalKeyboardRows.forEach((row) => {
@@ -1214,37 +1277,62 @@
       const normalOutput = UrduKeyboardLayout.mapCharacter(character);
       const shiftedOutput = UrduKeyboardLayout.mapCharacter(character, true);
       const visibleOutput = (output) => output === '\u0654' ? '\u25cc\u0654' : output;
-      key.querySelector('.phonetic-key-main-output').textContent = visibleOutput(normalOutput);
-      key.querySelector('.phonetic-key-shift-output').textContent = visibleOutput(shiftedOutput);
-      key.dataset.onscreenKey = normalOutput;
-      key.setAttribute('aria-label', normalOutput === '\u0654'
-        ? `${character} inserts hamza above the previous letter`
-        : `${character} inserts ${normalOutput}`);
+      const activeOutput = phoneticShiftActive ? shiftedOutput : normalOutput;
+      key.querySelector('.phonetic-key-main-output').textContent = visibleOutput(activeOutput);
+      key.querySelector('.phonetic-key-shift-output').textContent =
+        visibleOutput(phoneticShiftActive ? normalOutput : shiftedOutput);
+      key.dataset.onscreenKey = activeOutput;
+      key.classList.toggle('is-shifted', phoneticShiftActive);
+      key.setAttribute('aria-label', activeOutput === '\u0654'
+        ? `${character} inserts hamza above the next Urdu letter`
+        : `${character} inserts ${activeOutput}`);
       key.title = `${character}: ${normalOutput}${shiftedOutput !== normalOutput ? ` / Shift: ${shiftedOutput}` : ''}`;
     });
   };
   renderPhoneticKeyboard();
+  phoneticShiftToggle.addEventListener('click', () => {
+    phoneticShiftActive = !phoneticShiftActive;
+    phoneticShiftToggle.setAttribute('aria-pressed', String(phoneticShiftActive));
+    phoneticShiftToggle.textContent = phoneticShiftActive ? 'Shift on' : 'Shift';
+    updatePhoneticKeyLabels();
+  });
   const insertKeyboardOutput = (output) => {
-    const selection = window.getSelection();
-    if (output === '\u0654' && selection && selection.isCollapsed &&
-      selection.anchorNode && selection.anchorNode.nodeType === Node.TEXT_NODE &&
-      editor.contains(selection.anchorNode)) {
-      const textNode = selection.anchorNode;
-      const offset = selection.anchorOffset;
-      const precedingText = textNode.textContent.slice(0, offset);
-      const precedingCharacters = Array.from(precedingText);
-      const precedingCharacter = precedingCharacters[precedingCharacters.length - 1];
-      if (precedingCharacter) {
-        const composed = (precedingCharacter + output).normalize('NFC');
-        if (composed !== precedingCharacter + output) {
-          const range = document.createRange();
-          range.setStart(textNode, offset - precedingCharacter.length);
-          range.setEnd(textNode, offset);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          document.execCommand('insertText', false, composed);
-          return;
+    if (output === '\u0654') {
+      pendingHamza = false;
+      pendingHamzaRange = null;
+      document.execCommand('insertText', false, '\u0621');
+      const selection = window.getSelection();
+      if (selection?.isCollapsed) {
+        selection.modify('extend', 'backward', 'character');
+        if (selection.toString() === '\u0621') {
+          pendingHamzaRange = selection.getRangeAt(0).cloneRange();
+          selection.collapseToEnd();
         }
+      }
+      pendingHamza = true;
+      return;
+    }
+    if (pendingHamza) {
+      const selection = window.getSelection();
+      const canComposeAtCaret = pendingHamzaRange &&
+        pendingHamzaRange.toString() === '\u0621' &&
+        selection?.isCollapsed &&
+        selection.anchorNode === pendingHamzaRange.endContainer &&
+        selection.anchorOffset === pendingHamzaRange.endOffset;
+      pendingHamza = false;
+      const hamzaRange = pendingHamzaRange;
+      pendingHamzaRange = null;
+      const characters = Array.from(output);
+      if (canComposeAtCaret && characters[0] &&
+        /^\p{L}$/u.test(characters[0]) && /[\u0600-\u08ff]/u.test(characters[0])) {
+        const base = characters[0] === '\u06cc'
+          ? '\u0626'
+          : (characters[0] + '\u0654').normalize('NFC');
+        output = `${base}${characters.slice(1).join('')}`;
+        selection.removeAllRanges();
+        selection.addRange(hamzaRange);
+      } else {
+        pendingHamza = false;
       }
     }
     document.execCommand('insertText', false, output);
@@ -1255,10 +1343,36 @@
       focusEditor();
       const selection = window.getSelection();
       if (!selection || !selection.rangeCount) return;
-      const key = button.dataset.onscreenKey;
+      const key = button.dataset.physicalCharacter
+        ? UrduKeyboardLayout.mapCharacter(button.dataset.physicalCharacter, phoneticShiftActive)
+        : button.dataset.onscreenKey;
+      if (button.dataset.physicalCharacter && phoneticShiftActive) {
+        phoneticShiftActive = false;
+        phoneticShiftToggle.setAttribute('aria-pressed', 'false');
+        phoneticShiftToggle.textContent = 'Shift';
+        updatePhoneticKeyLabels();
+      }
       if (key === 'Backspace') {
-        if (selection.isCollapsed) selection.modify('extend', 'backward', 'character');
-        document.execCommand('delete');
+        if (pendingHamza) {
+          const canDeleteHamza = pendingHamzaRange?.toString() === '\u0621' &&
+            selection.isCollapsed &&
+            selection.anchorNode === pendingHamzaRange.endContainer &&
+            selection.anchorOffset === pendingHamzaRange.endOffset;
+          const hamzaRange = pendingHamzaRange;
+          pendingHamza = false;
+          pendingHamzaRange = null;
+          if (canDeleteHamza) {
+            selection.removeAllRanges();
+            selection.addRange(hamzaRange);
+            document.execCommand('delete');
+          } else {
+            if (selection.isCollapsed) selection.modify('extend', 'backward', 'character');
+            document.execCommand('delete');
+          }
+        } else {
+          if (selection.isCollapsed) selection.modify('extend', 'backward', 'character');
+          document.execCommand('delete');
+        }
       } else if (key === 'Enter') {
         document.execCommand('insertParagraph');
       } else {
@@ -1354,10 +1468,32 @@
       }
       if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) hideWordSuggestions();
     }
+    if (pendingHamza && event.key === 'Backspace') {
+      const selection = window.getSelection();
+      const canDeleteHamza = pendingHamzaRange?.toString() === '\u0621' &&
+        selection?.isCollapsed &&
+        selection.anchorNode === pendingHamzaRange.endContainer &&
+        selection.anchorOffset === pendingHamzaRange.endOffset;
+      const hamzaRange = pendingHamzaRange;
+      pendingHamza = false;
+      pendingHamzaRange = null;
+      if (canDeleteHamza) {
+        selection.removeAllRanges();
+        selection.addRange(hamzaRange);
+        document.execCommand('delete');
+        event.preventDefault();
+        return;
+      }
+    }
+    if (pendingHamza && !['Shift', 'Control', 'Alt', 'Meta'].includes(event.key) &&
+      event.key.length !== 1) {
+      pendingHamza = false;
+      pendingHamzaRange = null;
+    }
     if (!urduTyping || event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
       event.key.length !== 1) return;
     const output = UrduKeyboardLayout.mapKey(event);
-    if (output === event.key) return;
+    if (output === event.key && !pendingHamza) return;
     event.preventDefault();
     insertKeyboardOutput(output);
   });
@@ -1370,6 +1506,9 @@
   });
   nameInput.addEventListener('input', scheduleSave);
   restoreDocument();
+  editor.querySelectorAll('.table-caret-target').forEach((cell) => {
+    cell.classList.remove('table-caret-target');
+  });
   savedEditorRange = document.createRange();
   savedEditorRange.selectNodeContents(editor);
   savedEditorRange.collapse(false);
@@ -1681,25 +1820,59 @@
   document.getElementById('highlight-color').addEventListener('input', (event) => {
     runCommand('hiliteColor', event.target.value);
   });
-  const paletteColors = [
-    '#ffffff', '#000000', '#e7e6e6', '#44546a', '#5b9bd5', '#ed7d31', '#70ad47', '#ffc000', '#4472c4', '#7030a0',
-    '#f2f2f2', '#7f7f7f', '#d9e2f3', '#d6dce4', '#deebf7', '#fce4d6', '#e2f0d9', '#fff2cc', '#d9eaf7', '#e4dfec',
-    '#d9d9d9', '#595959', '#b4c7e7', '#adb9ca', '#bdd7ee', '#f4b183', '#a9d18e', '#ffe699', '#9bc2e6', '#c5b2d6',
-    '#bfbfbf', '#3f3f3f', '#8eaadb', '#8497b0', '#9dc3e6', '#f8cbad', '#c6e0b4', '#ffdf7f', '#70adce', '#a58ab5',
-    '#a6a6a6', '#262626', '#4472c4', '#44546a', '#5b9bd5', '#ed7d31', '#70ad47', '#ffc000', '#4472c4', '#7030a0',
-    '#808080', '#0d0d0d', '#2f5597', '#26334a', '#2e75b6', '#c65911', '#548235', '#bf9000', '#1f4e78', '#5b2c6f'
+  const themeHues = [0, 350, 28, 58, 102, 180, 210, 220, 270, 315];
+  const themePaletteColors = [
+    '#000000', '#404040', '#666666', '#808080', '#999999', '#b3b3b3', '#cccccc', '#dddddd', '#eeeeee', '#ffffff',
+    '#c00000', '#ff0000', '#ff9900', '#ffff00', '#00e000', '#00cfcf', '#4472e8', '#0066cc', '#8000ff', '#ff00ff'
   ];
-  const standardColors = ['#c00000', '#ff0000', '#ffc000', '#ffff00', '#92d050', '#00b050', '#00b0f0', '#0070c0', '#002060', '#7030a0'];
-  document.querySelectorAll('.color-picker').forEach((picker) => {
+  const hslToHex = (hue, saturation, lightness) => {
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+    const secondary = chroma * (1 - Math.abs((hue / 60) % 2 - 1));
+    const match = lightness - chroma / 2;
+    const [red, green, blue] = hue < 60 ? [chroma, secondary, 0]
+      : hue < 120 ? [secondary, chroma, 0]
+        : hue < 180 ? [0, chroma, secondary]
+          : hue < 240 ? [0, secondary, chroma]
+            : hue < 300 ? [secondary, 0, chroma]
+              : [chroma, 0, secondary];
+    return `#${[red, green, blue].map((channel) =>
+      Math.round((channel + match) * 255).toString(16).padStart(2, '0')).join('')}`;
+  };
+  [0.85, 0.75, 0.65, 0.55, 0.45, 0.35].forEach((lightness) => {
+    themeHues.forEach((hue) => themePaletteColors.push(hslToHex(hue, 0.68, lightness)));
+  });
+  document.querySelectorAll('input[type="color"]').forEach((input) => {
+    let picker = input.closest('.color-picker');
+    if (!picker) {
+      picker = document.createElement('span');
+      picker.className = 'color-picker color-input-picker';
+      picker.dataset.colorPicker = 'input';
+      const trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'color-tool color-input-tool';
+      trigger.setAttribute('aria-label', input.getAttribute('aria-label') || 'Choose color');
+      const indicator = document.createElement('span');
+      trigger.append(indicator);
+      const palette = document.createElement('div');
+      palette.className = 'color-palette';
+      palette.setAttribute('role', 'group');
+      palette.setAttribute('aria-label', `${input.getAttribute('aria-label') || 'Color'} palette`);
+      const customButton = document.createElement('button');
+      customButton.type = 'button';
+      customButton.className = 'more-colors';
+      customButton.textContent = 'Custom color';
+      customButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        input.click();
+      });
+      palette.append(customButton);
+      picker.append(trigger, palette);
+      input.insertAdjacentElement('afterend', picker);
+    }
     const palette = picker.querySelector('.color-palette');
-    [...paletteColors, 'standard-label', ...standardColors].forEach((color) => {
-      if (color === 'standard-label') {
-        const label = document.createElement('span');
-        label.className = 'standard-colors-label';
-        label.textContent = 'Standard colors';
-        palette.append(label);
-        return;
-      }
+    const colorTool = picker.querySelector('.color-tool');
+    themePaletteColors.forEach((color) => {
       const swatch = document.createElement('button');
       swatch.type = 'button';
       swatch.className = 'color-swatch';
@@ -1707,10 +1880,44 @@
       swatch.title = color;
       swatch.setAttribute('aria-label', color);
       swatch.dataset.color = color;
-      palette.append(swatch);
+      const customOption = palette.querySelector('.more-colors');
+      palette.insertBefore(swatch, customOption || null);
     });
-    palette.append(palette.querySelector('.more-colors'));
-    picker.querySelector('.color-tool').addEventListener('click', () => {
+    const customOption = palette.querySelector('.more-colors');
+    if (customOption && customOption.tagName === 'LABEL') customOption.firstChild.textContent = 'CUSTOM';
+    const customActions = document.createElement('div');
+    customActions.className = 'palette-custom-actions';
+    const eyedropper = document.createElement('button');
+    eyedropper.type = 'button';
+    eyedropper.className = 'color-eyedropper';
+    eyedropper.setAttribute('aria-label', 'Pick a color from the screen');
+    eyedropper.title = 'Pick a color from the screen';
+    eyedropper.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12.8 2.8 4.4 4.4m-2.2-2.2-8.6 8.6-3.1.9.9-3.1 8.6-8.6m-2.2 2.2 4.4 4.4M4.2 15.8l-1.6 1.6"/></svg>';
+    eyedropper.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof window.EyeDropper !== 'function') {
+        input.click();
+        return;
+      }
+      try {
+        const { sRGBHex } = await new window.EyeDropper().open();
+        input.value = sRGBHex;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Could not pick a color from the screen.', error);
+          showToast('Could not pick a color from the screen.');
+        }
+      }
+    });
+    if (customOption) customActions.append(customOption);
+    customActions.append(eyedropper);
+    palette.append(customActions);
+    colorTool.querySelector('span').style.backgroundColor = input.value;
+    colorTool.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       document.querySelectorAll('.color-picker.open').forEach((openPicker) => {
         if (openPicker !== picker) openPicker.classList.remove('open');
       });
@@ -1719,11 +1926,12 @@
     palette.addEventListener('click', (event) => {
       const swatch = event.target.closest('[data-color]');
       if (!swatch) return;
+      event.preventDefault();
       picker.classList.remove('open');
+      input.value = swatch.dataset.color;
+      colorTool.querySelector('span').style.backgroundColor = swatch.dataset.color;
       if (picker.dataset.colorPicker === 'table-border') {
         const table = getActiveTable();
-        picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
-        picker.querySelector('input[type="color"]').value = swatch.dataset.color;
         if (table) {
           table.dataset.borderColor = swatch.dataset.color;
           table.style.setProperty('--table-border-color', swatch.dataset.color);
@@ -1733,8 +1941,6 @@
       }
       if (picker.dataset.colorPicker === 'image-border') {
         const image = activeImage;
-        picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
-        picker.querySelector('input[type="color"]').value = swatch.dataset.color;
         if (image && editor.contains(image)) {
           image.dataset.imageBorderColor = swatch.dataset.color;
           const borderWidth = Number(image.dataset.imageBorderWidth || 0);
@@ -1743,22 +1949,29 @@
         }
         return;
       }
+      if (picker.classList.contains('color-input-picker')) {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
       const isHighlight = picker.dataset.colorPicker === 'highlight';
       runCommand(isHighlight ? 'hiliteColor' : 'foreColor', swatch.dataset.color);
-      picker.querySelector('.color-tool > span').style.backgroundColor = swatch.dataset.color;
-    });
-    picker.querySelector('.color-tool').addEventListener('click', () => {
-      if (picker.classList.contains('open')) {
-        const rect = picker.querySelector('.color-tool').getBoundingClientRect();
-        const paletteRect = palette.getBoundingClientRect();
-        const paletteHeight = paletteRect.height || 190;
-        palette.style.left = `${Math.max(4, Math.min(window.innerWidth - 230, rect.left))}px`;
-        palette.style.top = `${Math.min(window.innerHeight - paletteHeight - 4, rect.bottom + 4)}px`;
+      if (picker.dataset.colorPicker === 'text') {
+        document.querySelector('.text-color-tool > span').style.backgroundColor = swatch.dataset.color;
       }
     });
-    picker.querySelector('input[type="color"]').addEventListener('input', (event) => {
+    colorTool.addEventListener('click', () => {
+      if (picker.classList.contains('open')) {
+        const rect = colorTool.getBoundingClientRect();
+        const paletteBounds = palette.getBoundingClientRect();
+        const paletteHeight = paletteBounds.height || 240;
+        const paletteWidth = paletteBounds.width || 235;
+        palette.style.left = `${Math.max(4, Math.min(window.innerWidth - paletteWidth - 4, rect.left))}px`;
+        palette.style.top = `${Math.max(4, Math.min(window.innerHeight - paletteHeight - 4, rect.bottom + 4))}px`;
+      }
+    });
+    input.addEventListener('input', (event) => {
       picker.classList.remove('open');
-      picker.querySelector('.color-tool > span').style.backgroundColor = event.target.value;
+      colorTool.querySelector('span').style.backgroundColor = event.target.value;
       if (picker.dataset.colorPicker === 'table-border') {
         const table = getActiveTable();
         if (table) {
@@ -1776,7 +1989,6 @@
           image.style.border = borderWidth ? `${borderWidth}px solid ${event.target.value}` : 'none';
           scheduleSave();
         }
-        return;
       }
     });
   });
@@ -2212,7 +2424,7 @@
   });
   document.getElementById('text-box-button').addEventListener('click', () => {
     syncVerticalRuler();
-    const height = 100;
+    const height = 40;
     const editorStyle = getComputedStyle(editor);
     const paddingLeft = Number.parseFloat(editorStyle.paddingLeft) || 0;
     const paddingRight = Number.parseFloat(editorStyle.paddingRight) || 0;
@@ -2305,7 +2517,7 @@
       textBox.style.minWidth = '20px';
     }
     textBox.style.height = 'auto';
-    textBox.style.height = `${Math.max(100, textBox.scrollHeight)}px`;
+    textBox.style.height = `${Math.max(38, textBox.scrollHeight)}px`;
     if (activeShape === textBox) refreshShapeManipulators(textBox);
   };
   editor.addEventListener('input', (event) => {
@@ -2458,7 +2670,6 @@
     clonedNodes.forEach((node) => fragment.append(node));
     editor.insertBefore(fragment, nextPageBreak);
     syncPageBreakLayout();
-    updateLayoutLineNumbers();
     updateCounts();
     syncRulers();
     scheduleSave();
@@ -2479,7 +2690,6 @@
       editor.append(paragraph);
     }
     syncPageBreakLayout();
-    updateLayoutLineNumbers();
     updateCounts();
     syncRulers();
     scheduleSave();
@@ -2499,7 +2709,6 @@
     selection.removeAllRanges();
     selection.addRange(range);
     savedEditorRange = range.cloneRange();
-    updateLayoutLineNumbers();
     updateCounts();
     scheduleSave();
     paragraph.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2584,6 +2793,7 @@
   let activeShape = null;
   let imageCropMode = false;
   let activeTableCell = null;
+  let activeCaretTableCell = null;
   let activeTable = null;
   let selectedObject = null;
   let selectedTableBand = null;
@@ -2598,6 +2808,11 @@
   const watermarkDialog = document.getElementById('watermark-dialog');
   const tableManipulators = document.getElementById('table-manipulators');
   const selectObjectsToggle = document.getElementById('select-objects-toggle');
+  const tableCaretOverlay = document.createElement('span');
+  tableCaretOverlay.className = 'table-caret-overlay';
+  tableCaretOverlay.setAttribute('aria-hidden', 'true');
+  tableCaretOverlay.hidden = true;
+  document.body.append(tableCaretOverlay);
   const tableLayoutPanel = document.querySelector('[data-panel="table-layout"]');
   const tableLayoutTab = document.getElementById('table-layout-tab');
   const MIN_TABLE_ROW_HEIGHT = 10;
@@ -3000,8 +3215,66 @@
     scheduleSave();
   };
   document.getElementById('watermark-delete').addEventListener('click', removeSelectedWatermark);
+  const updateTableCellCaretHeight = (cell) => {
+    const style = getComputedStyle(cell);
+    const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    const verticalBorders = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+    const availableHeight = Math.max(1, cell.getBoundingClientRect().height - verticalPadding - verticalBorders);
+    return Math.max(1, Math.min(18, availableHeight - 4));
+  };
+  const updateTableCaretOverlay = () => {
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode;
+    const cell = anchor instanceof Element
+      ? anchor.closest('td, th')
+      : anchor?.parentElement?.closest('td, th');
+    if (!selection || !selection.isCollapsed || !cell || !editor.contains(cell)) {
+      tableCaretOverlay.hidden = true;
+      if (activeCaretTableCell) activeCaretTableCell.classList.remove('table-caret-target');
+      activeCaretTableCell = null;
+      return;
+    }
+    if (activeCaretTableCell !== cell) {
+      activeCaretTableCell?.classList.remove('table-caret-target');
+      activeCaretTableCell = cell;
+      activeCaretTableCell.classList.add('table-caret-target');
+    }
+    const range = selection.getRangeAt(0).cloneRange();
+    const caretRect = range.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const caretHeight = updateTableCellCaretHeight(cell);
+    const style = getComputedStyle(cell);
+    const fallbackX = style.direction === 'rtl'
+      ? cellRect.right - Number.parseFloat(style.paddingRight) - Number.parseFloat(style.borderRightWidth) - 1
+      : cellRect.left + Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth) + 1;
+    const caretX = caretRect.height ? caretRect.left : fallbackX;
+    const left = Math.max(cellRect.left + 1, Math.min(cellRect.right - 2, caretX));
+    const minTop = cellRect.top + Number.parseFloat(style.borderTopWidth) + 1;
+    const maxTop = Math.max(minTop, cellRect.bottom - Number.parseFloat(style.borderBottomWidth) - caretHeight - 1);
+    const selectionTop = caretRect.height
+      ? caretRect.top + (caretRect.height - caretHeight) / 2
+      : cellRect.top + (cellRect.height - caretHeight) / 2;
+    const top = Math.max(minTop, Math.min(maxTop, selectionTop));
+    tableCaretOverlay.style.left = `${left}px`;
+    tableCaretOverlay.style.top = `${top}px`;
+    tableCaretOverlay.style.height = `${caretHeight}px`;
+    tableCaretOverlay.style.backgroundColor = style.color;
+    tableCaretOverlay.hidden = false;
+  };
+  window.addEventListener('resize', updateTableCaretOverlay);
+  document.addEventListener('scroll', updateTableCaretOverlay, true);
   const updateTableToolbar = (cell) => {
     activeTableCell = cell;
+    if (activeCaretTableCell !== cell) {
+      activeCaretTableCell?.classList.remove('table-caret-target');
+      activeCaretTableCell = cell;
+      activeCaretTableCell?.classList.add('table-caret-target');
+    }
+    if (cell) {
+      updateTableCaretOverlay();
+    } else {
+      tableCaretOverlay.hidden = true;
+    }
     tableToolbar.hidden = !cell;
     if (!cell) {
       activeTable = null;
@@ -3263,6 +3536,9 @@
     const lineWidth = Number(shape.dataset.shapeLineWidth ?? 2);
     document.getElementById('shape-line-width').value = String(lineWidth);
     document.getElementById('shape-line-width-value').value = `${lineWidth} px`;
+    const textBoxBorderToggle = document.getElementById('textbox-border-toggle');
+    textBoxBorderToggle.setAttribute('aria-pressed', String(lineWidth > 0));
+    textBoxBorderToggle.textContent = lineWidth > 0 ? 'Remove border' : 'Show border';
     const opacity = Number(shape.dataset.shapeOpacity ?? 100);
     document.getElementById('shape-opacity').value = String(opacity);
     document.getElementById('shape-opacity-value').value = `${opacity}%`;
@@ -3477,17 +3753,31 @@
     }
     scheduleSave();
   });
-  document.getElementById('shape-line-width').addEventListener('input', (event) => {
-    if (!activeShape || !editor.contains(activeShape)) return;
-    const width = Number(event.currentTarget.value);
-    activeShape.dataset.shapeLineWidth = String(width);
-    activeShape.style.borderWidth = `${width}px`;
-    activeShape.style.setProperty('--shape-border-width', `${width}px`);
-    if (activeShape.dataset.shapeType === 'line') {
-      activeShape.style.height = `${Math.max(1, width)}px`;
+  const setShapeLineWidth = (shape, width) => {
+    if (!shape || !editor.contains(shape)) return;
+    shape.dataset.shapeLineWidth = String(width);
+    shape.style.borderWidth = `${width}px`;
+    shape.style.setProperty('--shape-border-width', `${width}px`);
+    if (shape.dataset.shapeType === 'line') {
+      shape.style.height = `${Math.max(1, width)}px`;
     }
     document.getElementById('shape-line-width-value').value = `${width} px`;
+    document.getElementById('shape-line-width').value = String(width);
+    const textBoxBorderToggle = document.getElementById('textbox-border-toggle');
+    textBoxBorderToggle.setAttribute('aria-pressed', String(width > 0));
+    textBoxBorderToggle.textContent = width > 0 ? 'Remove border' : 'Show border';
     scheduleSave();
+  };
+  document.getElementById('shape-line-width').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    setShapeLineWidth(activeShape, Number(event.currentTarget.value));
+  });
+  document.getElementById('textbox-border-toggle').addEventListener('click', () => {
+    if (!activeShape || activeShape.dataset.editorTextbox !== 'true' || !editor.contains(activeShape)) return;
+    const borderVisible = Number(activeShape.dataset.shapeLineWidth ?? 1) > 0;
+    setShapeLineWidth(activeShape, borderVisible ? 0 : 1);
+    document.getElementById('textbox-border-toggle').setAttribute('aria-pressed', String(!borderVisible));
+    document.getElementById('textbox-border-toggle').textContent = borderVisible ? 'Show border' : 'Remove border';
   });
   document.getElementById('shape-opacity').addEventListener('input', (event) => {
     if (!activeShape || !editor.contains(activeShape)) return;
@@ -4427,6 +4717,9 @@
       const rowHeight = Math.max(MIN_TABLE_ROW_HEIGHT, tableDrag.rowHeight + dy);
       row.style.height = `${rowHeight}px`;
       Array.from(row.cells).forEach((cell) => { cell.style.height = `${rowHeight}px`; });
+      if (activeTableCell && activeTableCell.parentElement === row) {
+        updateTableCaretOverlay();
+      }
     }
     if (kind !== 'row-reorder' && kind !== 'column-reorder') refreshTableManipulators(table);
     positionTableToolbar(activeTableCell || table.querySelector('td, th'));
@@ -5007,6 +5300,7 @@
     if (!activeTableCell || !editor.contains(activeTableCell)) return;
     const padding = Math.max(0, Math.min(24, Number(event.currentTarget.value) || 0));
     activeTableCell.style.padding = `${padding}px`;
+    updateTableCaretOverlay();
     document.getElementById('table-cell-padding-value').value = `${padding} px`;
     scheduleSave();
   });
@@ -5394,46 +5688,22 @@
     applyPageDimensions();
     closeLayoutMenu('size-menu');
   });
-  document.querySelectorAll('[data-column-count]').forEach((button) => {
-    button.addEventListener('click', () => {
-      editor.dataset.columnCount = button.dataset.columnCount;
-      closeLayoutMenu('columns-menu');
-      scheduleSave();
-    });
-  });
-  document.querySelectorAll('[data-line-numbering]').forEach((button) => {
-    button.addEventListener('click', () => {
-      lineNumberingMode = button.dataset.lineNumbering;
-      if (lineNumberingMode === 'none') delete editor.dataset.lineNumbering;
-      else editor.dataset.lineNumbering = lineNumberingMode;
-      updateLayoutLineNumbers();
-      closeLayoutMenu('line-numbers-menu');
-      scheduleSave();
-    });
-  });
   document.querySelectorAll('[data-page-border]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (button.dataset.pageBorder === 'none') delete editor.dataset.pageBorder;
-      else editor.dataset.pageBorder = button.dataset.pageBorder;
+      pageBorderStyle = button.dataset.pageBorder;
+      applyPageBorder();
       closeLayoutMenu('page-border-menu');
+      scheduleSave();
     });
+  });
+  document.getElementById('page-border-color-input').addEventListener('input', (event) => {
+    pageBorderColor = event.currentTarget.value;
+    applyPageBorder();
+    scheduleSave();
   });
   document.getElementById('page-color-input').addEventListener('input', (event) => {
     editor.style.backgroundColor = event.currentTarget.value;
   });
-  function updateLayoutLineNumbers() {
-    let line = 0;
-    Array.from(editor.children).forEach((child) => {
-      if (lineNumberingMode === 'restart' && child.classList.contains('page-break')) line = 0;
-      if (child.matches('.document-header, .document-footer')) return;
-      const paragraphs = child.matches('p') ? [child] : Array.from(child.querySelectorAll('p'));
-      paragraphs.forEach((paragraph) => {
-        line += 1;
-        paragraph.dataset.layoutLine = String(line);
-      });
-    });
-  }
-  editor.addEventListener('input', updateLayoutLineNumbers);
   function setZoom(value) {
     zoom = Math.max(70, Math.min(130, value));
     syncZoomControls();
@@ -5451,15 +5721,449 @@
   const printPageStyle = document.createElement('style');
   printPageStyle.textContent = '@page { size: A4 portrait; }';
   document.head.append(printPageStyle);
-  const downloadProject = () => {
-    downloadFile(safeFilename('json'), JSON.stringify({
-      format: 'urdu-writer',
-      version: 1,
-      name: nameInput.value.trim() || 'Untitled document',
-      html: editor.innerHTML
-    }, null, 2), 'application/json;charset=utf-8');
+  const downloadButton = document.getElementById('download-button');
+  const downloadPanel = document.getElementById('download-panel');
+  const exportFormat = document.getElementById('export-format');
+  const exportPageInput = document.getElementById('export-page-numbers');
+  const exportPageError = document.getElementById('export-pages-error');
+  const exportPageThumbnails = document.getElementById('export-page-thumbnails');
+  const exportCustomPages = document.getElementById('export-custom-pages');
+  const exportDownloadAction = document.getElementById('export-download-action');
+  let exportPreset = 'digital';
+  let exportPageMode = 'all';
+  let customExportPages = new Set();
+  const pageCount = () => editor.querySelectorAll('.page-break').length + 1;
+  const activePageIndex = () => Math.max(0, Math.min(pageCount() - 1, Number(verticalRuler.dataset.pageIndex) || 0));
+  const parseExportPages = (value) => {
+    const count = pageCount();
+    const pages = new Set();
+    const items = value.split(',').map((item) => item.trim());
+    if (!items.length || items.some((item) => !item)) return null;
+    for (const item of items) {
+      const match = item.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+      if (!match) return null;
+      const start = Number(match[1]);
+      const end = Number(match[2] || match[1]);
+      if (start < 1 || end < start || end > count) return null;
+      for (let page = start; page <= end; page += 1) pages.add(page - 1);
+    }
+    return pages;
   };
-  document.getElementById('download-button').addEventListener('click', downloadProject);
+  const formatExportPageSelection = (pages) => Array.from(pages)
+    .sort((a, b) => a - b)
+    .map((page) => page + 1)
+    .join(', ');
+  const syncExportPageThumbnails = () => {
+    const count = pageCount();
+    const pages = exportPageMode === 'all'
+      ? new Set(Array.from({ length: count }, (_, index) => index))
+      : exportPageMode === 'current'
+        ? new Set([activePageIndex()])
+        : customExportPages;
+    exportPageThumbnails.replaceChildren();
+    for (let page = 0; page < count; page += 1) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'export-page-card';
+      card.setAttribute('aria-pressed', String(pages.has(page)));
+      card.setAttribute('aria-label', `Page ${page + 1}${pages.has(page) ? ', selected' : ''}`);
+      const preview = document.createElement('span');
+      preview.className = 'export-page-thumb';
+      const text = getPageContentNodes(page).map((node) => node.innerText || node.textContent || '').join(' ').trim();
+      const lines = text.split(/\s+/).filter(Boolean).slice(0, 7);
+      for (const line of lines.length ? lines : ['']) {
+        const linePreview = document.createElement('span');
+        linePreview.textContent = line;
+        preview.append(linePreview);
+      }
+      const label = document.createElement('small');
+      label.textContent = `Page ${page + 1}`;
+      card.append(preview, label);
+      card.addEventListener('click', () => {
+        if (exportPageMode !== 'custom') {
+          customExportPages = exportPageMode === 'all'
+            ? new Set(Array.from({ length: pageCount() }, (_, index) => index))
+            : new Set([activePageIndex()]);
+        }
+        if (customExportPages.has(page)) customExportPages.delete(page);
+        else customExportPages.add(page);
+        exportPageMode = 'custom';
+        document.querySelectorAll('[data-export-pages]').forEach((button) =>
+          button.setAttribute('aria-pressed', String(button.dataset.exportPages === exportPageMode)));
+        exportCustomPages.hidden = false;
+        exportPageInput.value = formatExportPageSelection(customExportPages);
+        updateExportPageValidation();
+        syncExportPageThumbnails();
+      });
+      exportPageThumbnails.append(card);
+    }
+    document.querySelector('[data-export-pages="current"]').textContent = `This page (${activePageIndex() + 1})`;
+  };
+  const updateExportPageValidation = () => {
+    if (exportPageMode !== 'custom') {
+      exportPageError.textContent = '';
+      exportDownloadAction.disabled = false;
+      return;
+    }
+    const pages = parseExportPages(exportPageInput.value);
+    if (!pages || !pages.size) {
+      exportPageError.textContent = 'Enter valid page numbers within this document.';
+      exportDownloadAction.disabled = true;
+      return;
+    }
+    customExportPages = pages;
+    exportPageError.textContent = '';
+    exportDownloadAction.disabled = false;
+  };
+  const selectedExportPages = () => {
+    if (exportPageMode === 'current') return [activePageIndex()];
+    if (exportPageMode === 'custom') return Array.from(customExportPages).sort((a, b) => a - b);
+    return Array.from({ length: pageCount() }, (_, index) => index);
+  };
+  const updateExportButtonLabel = () => {
+    const format = exportFormat.value;
+    exportDownloadAction.textContent = `Download ${format === 'pdf' ? 'PDF' : 'PNG image'}`;
+  };
+  const positionDownloadPanel = () => {
+    const buttonRect = downloadButton.getBoundingClientRect();
+    const panelWidth = Math.min(410, window.innerWidth - 20);
+    const left = Math.max(10, Math.min(window.innerWidth - panelWidth - 10,
+      buttonRect.right - panelWidth));
+    downloadPanel.style.left = `${left}px`;
+    const maxTop = Math.max(10, window.innerHeight - downloadPanel.offsetHeight - 10);
+    downloadPanel.style.top = `${Math.max(10, Math.min(maxTop, buttonRect.bottom + 8))}px`;
+  };
+  const setDownloadPanelOpen = (open) => {
+    if (open) {
+      syncExportPageThumbnails();
+      updateExportPageValidation();
+      updateExportButtonLabel();
+      positionDownloadPanel();
+      downloadPanel.inert = false;
+      downloadPanel.setAttribute('aria-hidden', 'false');
+      downloadPanel.classList.add('is-open');
+      downloadButton.setAttribute('aria-expanded', 'true');
+    } else {
+      downloadPanel.classList.remove('is-open');
+      downloadPanel.setAttribute('aria-hidden', 'true');
+      downloadPanel.inert = true;
+      downloadButton.setAttribute('aria-expanded', 'false');
+    }
+  };
+  exportPageInput.value = String(activePageIndex() + 1);
+  const createExportBranding = () => {
+    const branding = document.createElement('div');
+    branding.className = 'export-branding-watermark';
+    const mark = document.createElement('span');
+    mark.className = 'export-logo-mark';
+    mark.textContent = 'UW';
+    const name = document.createElement('span');
+    name.className = 'export-logo-name';
+    name.textContent = 'Urdu Writer';
+    branding.append(mark, name);
+    return branding;
+  };
+  const exportPdf = (pages) => {
+    const branding = createExportBranding();
+    const printDocument = editor.cloneNode(false);
+    printDocument.removeAttribute('id');
+    printDocument.removeAttribute('contenteditable');
+    printDocument.classList.add('pdf-export-document');
+    printDocument.dataset.exportPreset = exportPreset;
+    const header = editor.querySelector('.document-header');
+    const footer = editor.querySelector('.document-footer');
+    if (header) printDocument.append(header.cloneNode(true));
+    pages.forEach((pageIndex, index) => {
+      if (index > 0) {
+        const pageBreak = document.createElement('div');
+        pageBreak.className = 'page-break';
+        printDocument.append(pageBreak);
+      }
+      getPageContentNodes(pageIndex).forEach((node) => printDocument.append(node.cloneNode(true)));
+    });
+    if (footer) printDocument.append(footer.cloneNode(true));
+    document.body.append(printDocument);
+    document.body.append(branding);
+    document.body.classList.add('pdf-export-active');
+    let cleanupTimer;
+    const cleanup = () => {
+      window.clearTimeout(cleanupTimer);
+      document.body.classList.remove('pdf-export-active');
+      branding.remove();
+      printDocument.remove();
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    cleanupTimer = window.setTimeout(cleanup, 300000);
+    window.print();
+  };
+  const exportPng = async (pages) => {
+    await document.fonts.ready;
+    const width = editor.offsetWidth;
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+    if (!width || !pageHeight || !pages.length) throw new Error('Select at least one valid page to export.');
+    const externalImage = Array.from(editor.querySelectorAll('img')).find((image) =>
+      image.currentSrc && !image.currentSrc.startsWith('data:') &&
+      new URL(image.currentSrc, document.baseURI).origin !== window.location.origin);
+    if (externalImage) throw new Error('Download external images before exporting the document as PNG.');
+    const height = pageHeight * pages.length;
+    const requestedScale = exportPreset === 'print' ? 2 : 1;
+    const scale = Math.min(requestedScale, 8192 / width, 8192 / height, Math.sqrt(64000000 / (width * height)));
+    const outputWidth = Math.max(1, Math.floor(width * scale));
+    const outputHeight = Math.max(1, Math.floor(height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('This browser could not create an image canvas.');
+    const editorRect = editor.getBoundingClientRect();
+    const layoutScale = editorRect.width / width || 1;
+    context.scale(scale, scale);
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, width, height);
+    const editorStyle = getComputedStyle(editor);
+    if (editorStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+      context.fillStyle = editorStyle.backgroundColor;
+      context.fillRect(0, 0, width, height);
+    }
+    const drawBorder = (rect, style) => {
+      const borders = [
+        ['borderTopWidth', 'borderTopStyle', 'borderTopColor', rect.left, rect.top, rect.right, rect.top],
+        ['borderRightWidth', 'borderRightStyle', 'borderRightColor', rect.right, rect.top, rect.right, rect.bottom],
+        ['borderBottomWidth', 'borderBottomStyle', 'borderBottomColor', rect.right, rect.bottom, rect.left, rect.bottom],
+        ['borderLeftWidth', 'borderLeftStyle', 'borderLeftColor', rect.left, rect.bottom, rect.left, rect.top]
+      ];
+      borders.forEach(([widthProp, styleProp, colorProp, x1, y1, x2, y2]) => {
+        const borderWidth = Number.parseFloat(style[widthProp]);
+        if (!borderWidth || style[styleProp] === 'none' || style[styleProp] === 'hidden') return;
+        context.beginPath();
+        context.lineWidth = borderWidth / layoutScale;
+        context.strokeStyle = style[colorProp];
+        context.setLineDash(style[styleProp] === 'dashed' ? [4, 3] : style[styleProp] === 'dotted' ? [1, 2] : []);
+        context.moveTo((x1 - editorRect.left) / layoutScale, (y1 - editorRect.top) / layoutScale);
+        context.lineTo((x2 - editorRect.left) / layoutScale, (y2 - editorRect.top) / layoutScale);
+        context.stroke();
+      });
+      context.setLineDash([]);
+    };
+    const drawText = (node) => {
+      const text = node.textContent;
+      if (!text.trim()) return;
+      const parent = node.parentElement;
+      const style = getComputedStyle(parent);
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const lineRects = Array.from(range.getClientRects());
+      if (!lineRects.length) return;
+      const lines = lineRects.map((rect) => ({ rect, text: '', left: rect.right, right: rect.left }));
+      const clusters = typeof Intl.Segmenter === 'function'
+        ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text))
+        : (() => {
+          let offset = 0;
+          return Array.from(text).map((segment) => {
+            const cluster = { segment, index: offset };
+            offset += segment.length;
+            return cluster;
+          });
+        })();
+      clusters.forEach(({ segment, index }) => {
+        const start = index;
+        const end = start + segment.length;
+        if (end > text.length) return;
+        range.setStart(node, start);
+        range.setEnd(node, end);
+        const rect = range.getBoundingClientRect();
+        if (!rect.width && !rect.height) return;
+        let line = lines[0];
+        let bestDistance = Number.POSITIVE_INFINITY;
+        lines.forEach((candidate) => {
+          const distance = Math.abs((candidate.rect.top + candidate.rect.bottom) / 2 - (rect.top + rect.bottom) / 2);
+          if (distance < bestDistance) {
+            line = candidate;
+            bestDistance = distance;
+          }
+        });
+        line.text += segment;
+        line.left = Math.min(line.left, rect.left);
+        line.right = Math.max(line.right, rect.right);
+      });
+      lines.forEach(({ rect, text: lineText, left, right }) => {
+        if (!lineText) return;
+        context.save();
+        const opacity = Number.parseFloat(style.opacity);
+        context.globalAlpha = Number.isFinite(opacity) ? opacity : 1;
+        context.fillStyle = style.color;
+        context.font = style.font;
+        context.direction = style.direction;
+        const textAlign = ['left', 'right', 'center', 'start', 'end'].includes(style.textAlign)
+          ? style.textAlign
+          : 'start';
+        context.textAlign = textAlign;
+        context.textBaseline = 'alphabetic';
+        const fontSize = Number.parseFloat(style.fontSize) || 16;
+        const x = textAlign === 'center'
+          ? (left + right) / 2
+          : textAlign === 'left' || (textAlign === 'start' && style.direction !== 'rtl') ||
+            (textAlign === 'end' && style.direction === 'rtl')
+            ? left
+            : right;
+        const baseline = rect.top + fontSize * 1.12;
+        context.fillText(lineText, (x - editorRect.left) / layoutScale, (baseline - editorRect.top) / layoutScale);
+        const decorations = style.textDecorationLine.split(/\s+/);
+        if (decorations.includes('underline') || decorations.includes('line-through')) {
+          context.beginPath();
+          context.lineWidth = Math.max(1, fontSize / 16);
+          context.strokeStyle = style.color;
+          const decorationY = baseline + (decorations.includes('underline') ? fontSize * .08 : -fontSize * .3);
+          context.moveTo((left - editorRect.left) / layoutScale, (decorationY - editorRect.top) / layoutScale);
+          context.lineTo((right - editorRect.left) / layoutScale, (decorationY - editorRect.top) / layoutScale);
+          context.stroke();
+        }
+        context.restore();
+      });
+    };
+    const drawElement = (element) => {
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      const bounds = element.getBoundingClientRect();
+      if (!bounds.width && !bounds.height) return;
+      const rect = {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom
+      };
+      if (element === editor && style.outlineStyle !== 'none') {
+        const outlineWidth = Number.parseFloat(style.outlineWidth);
+        const inset = Math.max(0, -Number.parseFloat(style.outlineOffset));
+        if (outlineWidth > 0) {
+          context.save();
+          context.lineWidth = outlineWidth / layoutScale;
+          context.strokeStyle = style.outlineColor;
+          context.setLineDash(style.outlineStyle === 'dashed' ? [4, 3] : style.outlineStyle === 'dotted' ? [1, 2] : []);
+          context.strokeRect(inset + outlineWidth / 2, inset + outlineWidth / 2,
+            Math.max(0, width - inset * 2 - outlineWidth), Math.max(0, height - inset * 2 - outlineWidth));
+          context.restore();
+        }
+      }
+      if (element !== editor) {
+        if (style.backgroundColor !== 'rgba(0, 0, 0, 0)') {
+          context.fillStyle = style.backgroundColor;
+          context.fillRect((rect.left - editorRect.left) / layoutScale, (rect.top - editorRect.top) / layoutScale,
+            bounds.width / layoutScale, bounds.height / layoutScale);
+        }
+        drawBorder(rect, style);
+        if (element instanceof HTMLImageElement && element.complete && element.naturalWidth) {
+          const opacity = Number.parseFloat(style.opacity);
+          context.globalAlpha = Number.isFinite(opacity) ? opacity : 1;
+          context.drawImage(element, (rect.left - editorRect.left) / layoutScale,
+            (rect.top - editorRect.top) / layoutScale, bounds.width / layoutScale, bounds.height / layoutScale);
+          context.globalAlpha = 1;
+          return;
+        }
+      }
+      for (const child of element.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) drawText(child);
+        else if (child instanceof Element) drawElement(child);
+      }
+    };
+    pages.forEach((pageIndex, outputIndex) => {
+      const pageTop = pageIndex * (pageHeight + pageGap);
+      context.save();
+      context.beginPath();
+      context.rect(0, outputIndex * pageHeight, width, pageHeight);
+      context.clip();
+      context.translate(0, outputIndex * pageHeight - pageTop);
+      drawElement(editor);
+      context.restore();
+      const brandX = 20;
+      const brandY = outputIndex * pageHeight + pageHeight - 38;
+      context.fillStyle = '#176b9a';
+      context.beginPath();
+      context.roundRect(brandX, brandY, 22, 22, 5);
+      context.fill();
+      context.fillStyle = '#fff';
+      context.font = '700 11px Arial, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('UW', brandX + 11, brandY + 11);
+      context.fillStyle = '#26334a';
+      context.font = '600 12px Arial, sans-serif';
+      context.textAlign = 'left';
+      context.fillText('Urdu Writer', brandX + 27, brandY + 11);
+    });
+    const png = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+    if (!png) throw new Error('The browser could not encode the document as a PNG image.');
+    const pngUrl = URL.createObjectURL(png);
+    const link = document.createElement('a');
+    link.href = pngUrl;
+    link.download = safeFilename(pages.length > 1 ? 'png' : `page-${pages[0] + 1}.png`);
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+  };
+  downloadButton.addEventListener('click', () => {
+    setDownloadPanelOpen(downloadPanel.getAttribute('aria-hidden') === 'true');
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (downloadPanel.classList.contains('is-open') &&
+      !downloadPanel.contains(event.target) && !downloadButton.contains(event.target)) setDownloadPanelOpen(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && downloadPanel.classList.contains('is-open')) {
+      setDownloadPanelOpen(false);
+      downloadButton.focus();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (downloadPanel.classList.contains('is-open')) positionDownloadPanel();
+  });
+  document.querySelectorAll('[data-export-preset]').forEach((button) => {
+    button.addEventListener('click', () => {
+      exportPreset = button.dataset.exportPreset;
+      document.querySelectorAll('[data-export-preset]').forEach((option) =>
+        option.setAttribute('aria-pressed', String(option === button)));
+    });
+  });
+  document.querySelectorAll('[data-export-pages]').forEach((button) => {
+    button.addEventListener('click', () => {
+      exportPageMode = button.dataset.exportPages;
+      if (exportPageMode === 'current') customExportPages = new Set([activePageIndex()]);
+      if (exportPageMode === 'all') customExportPages = new Set(Array.from({ length: pageCount() }, (_, index) => index));
+      if (exportPageMode === 'custom' && !customExportPages.size) customExportPages = new Set([activePageIndex()]);
+      exportPageInput.value = formatExportPageSelection(customExportPages);
+      exportCustomPages.hidden = exportPageMode !== 'custom';
+      document.querySelectorAll('[data-export-pages]').forEach((option) =>
+        option.setAttribute('aria-pressed', String(option === button)));
+      updateExportPageValidation();
+      syncExportPageThumbnails();
+    });
+  });
+  exportPageInput.addEventListener('input', () => {
+    const pages = parseExportPages(exportPageInput.value);
+    if (pages) customExportPages = pages;
+    updateExportPageValidation();
+    syncExportPageThumbnails();
+  });
+  document.getElementById('export-select-all-pages').addEventListener('click', () => {
+    customExportPages = new Set(Array.from({ length: pageCount() }, (_, index) => index));
+    exportPageInput.value = formatExportPageSelection(customExportPages);
+    updateExportPageValidation();
+    syncExportPageThumbnails();
+  });
+  exportFormat.addEventListener('change', updateExportButtonLabel);
+  exportDownloadAction.addEventListener('click', () => {
+    const pages = selectedExportPages();
+    setDownloadPanelOpen(false);
+    if (exportFormat.value === 'pdf') {
+      exportPdf(pages);
+      return;
+    }
+    exportPng(pages).catch((error) => {
+      console.error('Could not export the document as a PNG image.', error);
+      showToast(error instanceof Error ? error.message : 'PNG export failed. Try again.');
+    });
+  });
   document.getElementById('open-file-input').addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -5474,8 +6178,20 @@
           }
           editor.innerHTML = sanitizeDocumentHtml(project.html);
           if (typeof project.name === 'string') nameInput.value = project.name;
+          pageBorderStyle = ['none', 'solid', 'thick', 'double', 'dashed', 'dotted'].includes(project.pageBorderStyle)
+            ? project.pageBorderStyle
+            : 'none';
+          pageBorderColor = /^#[\da-f]{6}$/i.test(project.pageBorderColor || '')
+            ? project.pageBorderColor
+            : '#697586';
+          document.getElementById('page-border-color-input').value = pageBorderColor;
+          applyPageBorder();
         } else {
           editor.replaceChildren();
+          pageBorderStyle = 'none';
+          pageBorderColor = '#697586';
+          document.getElementById('page-border-color-input').value = pageBorderColor;
+          applyPageBorder();
           const lines = contents.split(/\r?\n/);
           lines.forEach((line, index) => {
             editor.append(document.createTextNode(line));
@@ -5555,7 +6271,7 @@
         prevent(() => runCommand('formatBlock', `<h${event.code.slice(-1)}>`));
       }
     } else if (key === 's' && event.shiftKey) {
-      prevent(downloadProject);
+      prevent(() => setDownloadPanelOpen(true));
     } else if (inEditor && event.shiftKey && key === 'n') {
       prevent(resetTextStyle);
     } else if (inEditor && event.shiftKey && key === 'l') {

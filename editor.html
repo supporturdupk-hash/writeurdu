@@ -22,7 +22,7 @@
       <span class="save-status" id="save-status" role="status" title="Saved on this device">Saved</span>
     </div>
     <div class="header-actions">
-      <button class="header-button download-action" id="download-button" type="button" aria-label="Download document as Urdu Writer project">
+      <button class="header-button download-action" id="download-button" type="button" aria-label="Open document download options" aria-expanded="false" aria-controls="download-panel">
         <img src="assets/Media/download-svgrepo-com.svg" alt=""><span>Download</span>
       </button>
       <button class="header-button print-action" id="print-button" type="button">
@@ -30,6 +30,45 @@
       </button>
     </div>
   </header>
+  <section id="download-panel" class="download-panel" role="region" aria-label="Download document" aria-hidden="true" inert>
+    <header class="download-panel-header"><span aria-hidden="true">‹</span><strong>Download</strong></header>
+    <div class="download-panel-content">
+      <label class="download-field-label" for="export-format">File type</label>
+      <select id="export-format" class="export-format">
+        <option value="pdf">PDF</option>
+        <option value="png">PNG image</option>
+      </select>
+      <fieldset class="export-preset">
+        <legend>Presets</legend>
+        <div class="export-preset-options">
+          <button type="button" data-export-preset="digital" aria-pressed="true">Digital</button>
+          <button type="button" data-export-preset="print" aria-pressed="false">Print</button>
+        </div>
+      </fieldset>
+      <fieldset class="export-page-selection">
+        <legend>Select pages</legend>
+        <div class="export-page-options">
+          <button type="button" data-export-pages="all" aria-pressed="true">All</button>
+          <button type="button" data-export-pages="current" aria-pressed="false">This page (1)</button>
+          <button type="button" data-export-pages="custom" aria-pressed="false">Custom</button>
+        </div>
+        <div id="export-custom-pages" class="export-custom-pages" hidden>
+          <label for="export-page-numbers">Page numbers</label>
+          <input id="export-page-numbers" type="text" inputmode="numeric" placeholder="e.g. 1, 3-4" aria-describedby="export-pages-error">
+          <button id="export-select-all-pages" type="button">Select all</button>
+          <p id="export-pages-error" class="export-pages-error" aria-live="polite"></p>
+          <div id="export-page-thumbnails" class="export-page-thumbnails" aria-label="Choose pages"></div>
+        </div>
+      </fieldset>
+      <details class="export-advanced">
+        <summary><span><strong>Advanced Settings</strong><small>Watermark and page options</small></span><span aria-hidden="true">⌄</span></summary>
+        <p>The Urdu Writer logo watermark is included in PDF and PNG downloads.</p>
+      </details>
+    </div>
+    <footer class="download-panel-footer">
+      <button id="export-download-action" type="button">Download PDF</button>
+    </footer>
+  </section>
   <input id="open-file-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
 
   <nav class="tab-row" aria-label="Document tabs" dir="ltr">
@@ -283,30 +322,31 @@
         <button class="layout-action layout-menu-trigger" id="size-button" type="button" aria-expanded="false" aria-controls="size-menu"><img class="layout-glyph" src="assets/Media/size-svgrepo-com.svg" alt=""><span>Size</span></button>
         <div class="layout-menu" id="size-menu" role="menu" aria-label="Page size" hidden>
           <strong>Page size</strong>
-          <button type="button" data-page-size="Letter">Letter <small>8.5″ × 11″</small></button>
-          <button type="button" data-page-size="Legal">Legal <small>8.5″ × 14″</small></button>
-          <button type="button" data-page-size="Executive">Executive <small>7.25″ × 10.5″</small></button>
-          <button type="button" data-page-size="A4">A4 <small>8.27″ × 11.69″</small></button>
-          <button type="button" data-page-size="A5">A5 <small>5.83″ × 8.27″</small></button>
+          <button type="button" data-page-size="Letter">
+            <span class="page-size-icon" aria-hidden="true"></span>
+            <span class="page-size-copy"><strong>Letter</strong><small>8.5″ × 11″</small></span>
+          </button>
+          <button type="button" data-page-size="Legal">
+            <span class="page-size-icon" aria-hidden="true"></span>
+            <span class="page-size-copy"><strong>Legal</strong><small>8.5″ × 14″</small></span>
+          </button>
+          <button type="button" data-page-size="Executive">
+            <span class="page-size-icon" aria-hidden="true"></span>
+            <span class="page-size-copy"><strong>Executive</strong><small>7.25″ × 10.5″</small></span>
+          </button>
+          <button type="button" data-page-size="A4">
+            <span class="page-size-icon" aria-hidden="true"></span>
+            <span class="page-size-copy"><strong>A4</strong><small>8.27″ × 11.69″</small></span>
+          </button>
+          <button type="button" data-page-size="A5">
+            <span class="page-size-icon" aria-hidden="true"></span>
+            <span class="page-size-copy"><strong>A5</strong><small>5.83″ × 8.27″</small></span>
+          </button>
           <div class="layout-custom-fields layout-custom-size">
             <label>Width <input id="page-width-input" type="number" min="4" max="20" step="0.1" value="8.27"> in</label>
             <label>Height <input id="page-height-input" type="number" min="4" max="20" step="0.1" value="11.69"> in</label>
           </div>
           <button type="button" class="layout-menu-primary" id="apply-custom-size">Apply custom size</button>
-        </div>
-        <button class="layout-action layout-menu-trigger" id="columns-button" type="button" aria-expanded="false" aria-controls="columns-menu"><img class="layout-glyph" src="assets/Media/columns-three-svgrepo-com.svg" alt=""><span>Columns</span></button>
-        <div class="layout-menu" id="columns-menu" role="menu" aria-label="Document columns" hidden>
-          <strong>Document columns</strong>
-          <button type="button" data-column-count="1">One column</button>
-          <button type="button" data-column-count="2">Two columns</button>
-          <button type="button" data-column-count="3">Three columns</button>
-        </div>
-        <button class="layout-action layout-menu-trigger" id="line-numbers-button" type="button" aria-expanded="false" aria-controls="line-numbers-menu"><img class="layout-glyph" src="assets/Media/line%20number.svg" alt=""><span>Line Numbers</span></button>
-        <div class="layout-menu" id="line-numbers-menu" role="menu" aria-label="Line numbering" hidden>
-          <strong>Line numbering</strong>
-          <button type="button" data-line-numbering="none">None</button>
-          <button type="button" data-line-numbering="continuous">Continuous</button>
-          <button type="button" data-line-numbering="restart">Restart after each page break</button>
         </div>
         <span class="group-caption">Page setup</span>
       </div>
@@ -314,9 +354,13 @@
         <button class="layout-action layout-menu-trigger" id="page-border-button" type="button" aria-expanded="false" aria-controls="page-border-menu"><img class="layout-glyph" src="assets/Media/page%20border.svg" alt=""><span>Page Borders</span></button>
         <div class="layout-menu" id="page-border-menu" role="menu" aria-label="Page borders" hidden>
           <strong>Page border</strong>
-          <button type="button" data-page-border="none">No border</button>
-          <button type="button" data-page-border="solid">Box border</button>
-          <button type="button" data-page-border="double">Double border</button>
+          <button type="button" data-page-border="none"><span class="page-border-preview" aria-hidden="true"></span>No border</button>
+          <button type="button" data-page-border="solid"><span class="page-border-preview" aria-hidden="true"></span>Single</button>
+          <button type="button" data-page-border="thick"><span class="page-border-preview" aria-hidden="true"></span>Thick</button>
+          <button type="button" data-page-border="double"><span class="page-border-preview" aria-hidden="true"></span>Double</button>
+          <button type="button" data-page-border="dashed"><span class="page-border-preview" aria-hidden="true"></span>Dashed</button>
+          <button type="button" data-page-border="dotted"><span class="page-border-preview" aria-hidden="true"></span>Dotted</button>
+          <label class="page-border-color">Border color <input id="page-border-color-input" type="color" value="#697586" aria-label="Page border color"></label>
         </div>
         <label class="layout-action layout-color-action" for="page-color-input"><img class="layout-glyph" src="assets/Media/color-background-svgrepo-com.svg" alt=""><span>Page Color</span><input id="page-color-input" type="color" value="#ffffff" aria-label="Page color"></label>
         <span class="group-caption">Page background</span>
@@ -422,7 +466,10 @@
           <button type="button" role="tab" aria-selected="false" data-keyboard-layout="symbols">Symbols</button>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="urdu">
-          <div class="keyboard-heading">Urdu keyboard</div>
+          <div class="keyboard-heading-row">
+            <div class="keyboard-heading">Urdu keyboard</div>
+            <button id="phonetic-shift-toggle" class="phonetic-shift-toggle" type="button" aria-label="Shift Urdu keyboard" aria-pressed="false">Shift</button>
+          </div>
           <div id="phonetic-keyboard" class="phonetic-keyboard" aria-label="Urdu phonetic keyboard"></div>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="symbols" hidden>
@@ -459,6 +506,7 @@
           <button class="ruler-marker indent-marker first-line-marker" type="button" data-ruler-handle="first-line" aria-label="Adjust first-line indent" title="First-line indent"></button>
         </div>
       </div>
+      <div id="landscape-scrollbar" class="landscape-scrollbar" role="region" aria-label="Scroll landscape page horizontally" tabindex="0" hidden><div></div></div>
       <div class="document-stage">
         <div class="page-frame">
           <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" aria-autocomplete="list" aria-controls="word-suggestions" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
@@ -552,6 +600,7 @@
       <label>Stroke <input id="shape-line-color" type="color" value="#176b9a" aria-label="Shape stroke color"></label>
       <label class="shape-line-width-control">Width <input id="shape-line-width" type="range" min="0" max="10" step="1" value="2" aria-label="Shape stroke width"><output id="shape-line-width-value">2 px</output></label>
     </div>
+    <div class="textbox-border-control"><button id="textbox-border-toggle" type="button" aria-pressed="true">Remove border</button></div>
     <label>Opacity <input id="shape-opacity" type="range" min="10" max="100" step="5" value="100"><output id="shape-opacity-value">100%</output></label>
     <label>Text <input id="shape-text" type="text" maxlength="120" placeholder="Add text to shape" aria-label="Text inside shape"></label>
   </div>
@@ -625,7 +674,7 @@
       <div><dt>Copy / Cut / Paste / Select all</dt><dd>Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+A</dd></div>
       <div><dt>Toggle Urdu / English typing</dt><dd>Ctrl+Space</dd></div>
       <div><dt>Find / Replace</dt><dd>Ctrl+F / Ctrl+H</dd></div>
-      <div><dt>Save on this device / Download project</dt><dd>Ctrl+S / Ctrl+Shift+S</dd></div>
+      <div><dt>Save on this device / Download options</dt><dd>Ctrl+S / Ctrl+Shift+S</dd></div>
       <div><dt>Open file / New document / Print</dt><dd>Ctrl+O / Ctrl+N / Ctrl+P</dd></div>
       <div><dt>Left / Center / Right / Justify</dt><dd>Ctrl+L / Ctrl+E / Ctrl+R / Ctrl+J</dd></div>
       <div><dt>Bulleted list / Numbered list</dt><dd>Ctrl+Shift+L / Ctrl+Shift+7</dd></div>
