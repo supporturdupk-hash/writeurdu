@@ -1,5 +1,6 @@
 (() => {
   const editor = document.getElementById('editor');
+  const marginGuides = document.getElementById('margin-guides');
   const nameInput = document.getElementById('document-name');
   const saveStatus = document.getElementById('save-status');
   const STORAGE_KEY = 'urdu-writer-document-v1';
@@ -86,6 +87,9 @@
         } else if (name === 'data-editor-textbox' && node.tagName === 'DIV' && value === 'true') {
           clean.dataset.editorTextbox = 'true';
           clean.tabIndex = 0;
+        } else if (name === 'data-textbox-manual-width' && node.tagName === 'DIV' &&
+          node.dataset.editorTextbox === 'true' && value === 'true') {
+          clean.dataset.textboxManualWidth = 'true';
         } else if (name === 'data-shape-label' && node.tagName === 'SPAN' && value === 'true') {
           clean.dataset.shapeLabel = 'true';
         } else if (name === 'data-shape-geometry' && node.tagName === 'DIV' && ['basic', 'polygon'].includes(value)) {
@@ -606,6 +610,7 @@
     ['zoom-label', 'status-zoom-label'].forEach((id) => { document.getElementById(id).textContent = `${zoom}%`; });
     editor.style.transform = `scale(${zoom / 100})`;
     editor.style.marginBottom = `${(zoom / 100 - 1) * editor.scrollHeight}px`;
+    if (!marginGuides.hidden) marginGuides.style.transform = `scale(${zoom / 100})`;
     syncRulers();
   }
 
@@ -1175,10 +1180,8 @@
       document.querySelectorAll('[data-keyboard-panel]').forEach((panel) => {
         panel.hidden = panel.dataset.keyboardPanel !== layout;
       });
-      document.getElementById('keyboard-shift').hidden = layout !== 'urdu';
     });
   });
-  let keyboardShift = false;
   const phoneticKeyboard = document.getElementById('phonetic-keyboard');
   const physicalKeyboardRows = ['1234567890-=', 'qwertyuiop[]\\', "asdfghjkl;'", 'zxcvbnm,./'];
   const renderPhoneticKeyboard = () => {
@@ -1210,21 +1213,42 @@
       const character = key.dataset.physicalCharacter;
       const normalOutput = UrduKeyboardLayout.mapCharacter(character);
       const shiftedOutput = UrduKeyboardLayout.mapCharacter(character, true);
-      key.querySelector('.phonetic-key-main-output').textContent = normalOutput;
-      key.querySelector('.phonetic-key-shift-output').textContent = shiftedOutput;
-      key.dataset.onscreenKey = keyboardShift ? shiftedOutput : normalOutput;
-      key.classList.toggle('is-shifted', keyboardShift);
-      key.setAttribute('aria-label',
-        `${keyboardShift ? 'Shift plus ' : ''}${character} inserts ${key.dataset.onscreenKey}`);
+      const visibleOutput = (output) => output === '\u0654' ? '\u25cc\u0654' : output;
+      key.querySelector('.phonetic-key-main-output').textContent = visibleOutput(normalOutput);
+      key.querySelector('.phonetic-key-shift-output').textContent = visibleOutput(shiftedOutput);
+      key.dataset.onscreenKey = normalOutput;
+      key.setAttribute('aria-label', normalOutput === '\u0654'
+        ? `${character} inserts hamza above the previous letter`
+        : `${character} inserts ${normalOutput}`);
       key.title = `${character}: ${normalOutput}${shiftedOutput !== normalOutput ? ` / Shift: ${shiftedOutput}` : ''}`;
     });
   };
   renderPhoneticKeyboard();
-  document.getElementById('keyboard-shift').addEventListener('click', (event) => {
-    keyboardShift = !keyboardShift;
-    event.currentTarget.setAttribute('aria-pressed', String(keyboardShift));
-    updatePhoneticKeyLabels();
-  });
+  const insertKeyboardOutput = (output) => {
+    const selection = window.getSelection();
+    if (output === '\u0654' && selection && selection.isCollapsed &&
+      selection.anchorNode && selection.anchorNode.nodeType === Node.TEXT_NODE &&
+      editor.contains(selection.anchorNode)) {
+      const textNode = selection.anchorNode;
+      const offset = selection.anchorOffset;
+      const precedingText = textNode.textContent.slice(0, offset);
+      const precedingCharacters = Array.from(precedingText);
+      const precedingCharacter = precedingCharacters[precedingCharacters.length - 1];
+      if (precedingCharacter) {
+        const composed = (precedingCharacter + output).normalize('NFC');
+        if (composed !== precedingCharacter + output) {
+          const range = document.createRange();
+          range.setStart(textNode, offset - precedingCharacter.length);
+          range.setEnd(textNode, offset);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          document.execCommand('insertText', false, composed);
+          return;
+        }
+      }
+    }
+    document.execCommand('insertText', false, output);
+  };
   document.querySelector('.keyboard-sidebar').addEventListener('pointerdown', rememberEditorSelection, true);
   document.querySelectorAll('[data-onscreen-key]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1241,7 +1265,7 @@
         const wasUrduTyping = urduTyping;
         if (keyboardLayout === 'symbols') urduTyping = false;
         try {
-          document.execCommand('insertText', false, key);
+          insertKeyboardOutput(key);
         } finally {
           urduTyping = wasUrduTyping;
         }
@@ -1301,6 +1325,17 @@
     updateWordSuggestions();
   });
   editor.addEventListener('keydown', (event) => {
+    const textBox = event.target instanceof Element ? event.target.closest('.editor-textbox') : null;
+    if (textBox && (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      event.stopPropagation();
+      const range = document.createRange();
+      range.selectNodeContents(textBox);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
     if (!wordSuggestions.hidden) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
@@ -1324,7 +1359,7 @@
     const output = UrduKeyboardLayout.mapKey(event);
     if (output === event.key) return;
     event.preventDefault();
-    document.execCommand('insertText', false, output);
+    insertKeyboardOutput(output);
   });
   editor.addEventListener('blur', hideWordSuggestions);
   editor.addEventListener('paste', (event) => {
@@ -2176,13 +2211,57 @@
     }
   });
   document.getElementById('text-box-button').addEventListener('click', () => {
-    const width = 240;
+    syncVerticalRuler();
     const height = 100;
-    const left = Math.max(0, Math.round((editor.clientWidth - width) / 2));
-    const top = Math.max(0, Math.round(editor.scrollTop + 80));
+    const editorStyle = getComputedStyle(editor);
+    const paddingLeft = Number.parseFloat(editorStyle.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(editorStyle.paddingRight) || 0;
+    const paddingTop = Number.parseFloat(editorStyle.paddingTop) || 0;
+    const paddingBottom = Number.parseFloat(editorStyle.paddingBottom) || 0;
+    const pageWidth = editor.clientWidth;
+    const availablePageWidth = Math.max(1, pageWidth - paddingLeft - paddingRight - 16);
+    let width = Math.min(240, availablePageWidth);
+    const pageHeight = Number.parseFloat(editorStyle.getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(editorStyle.getPropertyValue('--layout-page-gap')) || 20;
+    const pageIndex = Math.max(0, Math.min(editor.querySelectorAll('.page-break').length,
+      Number(verticalRuler.dataset.pageIndex) || 0));
+    const pageTop = pageIndex * (pageHeight + pageGap);
+    const top = Math.max(pageTop + paddingTop, Math.min(pageTop + pageHeight - paddingBottom - height,
+      pageTop + paddingTop + 24));
+    const pageBounds = editor.getBoundingClientRect();
+    const workspaceBounds = document.querySelector('.document-workspace').getBoundingClientRect();
+    const scaleX = pageBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    const boxTop = pageBounds.top + top * scaleY;
+    const boxBottom = boxTop + height * scaleY;
+    let visibleLeft = Math.max(pageBounds.left + paddingLeft * scaleX, workspaceBounds.left);
+    let visibleRight = Math.min(pageBounds.right - paddingRight * scaleX, workspaceBounds.right);
+    [
+      document.querySelector('.keyboard-sidebar'),
+      document.querySelector('.ads-sidebar')
+    ].forEach((obstruction) => {
+      if (!obstruction || getComputedStyle(obstruction).display === 'none') return;
+      const bounds = obstruction.getBoundingClientRect();
+      if (bounds.bottom <= boxTop || bounds.top >= boxBottom) return;
+      if (bounds.left <= visibleLeft && bounds.right > visibleLeft) {
+        visibleLeft = bounds.right;
+      } else if (bounds.left < visibleRight && bounds.right >= visibleRight) {
+        visibleRight = bounds.left;
+      }
+    });
+    const visibleContentWidth = visibleRight - visibleLeft;
+    if (visibleContentWidth > 16) {
+      width = Math.max(1, Math.min(width, visibleContentWidth - 16));
+    }
+    const left = visibleContentWidth > 16
+      ? Math.max(paddingLeft, Math.round(
+        (visibleLeft + (visibleContentWidth - width) / 2 - pageBounds.left) / scaleX
+      ))
+      : Math.max(paddingLeft,
+        Math.round(paddingLeft + (pageWidth - paddingLeft - paddingRight - width) / 2));
     const lineColor = '#176b9a';
     const fillColor = '#ffffff';
-    insertHtml(`<div class="editor-shape editor-textbox" tabindex="0" contenteditable="true" dir="auto" data-editor-shape="true" data-editor-textbox="true" data-shape-type="rectangle" data-shape-geometry="basic" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="1" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;background-color:${fillColor};border-color:${lineColor};border-width:1px"><span data-shape-label="true">Type here</span></div><p><br></p>`);
+    insertHtml(`<div class="editor-shape editor-textbox" tabindex="0" contenteditable="true" dir="auto" data-editor-shape="true" data-editor-textbox="true" data-shape-type="rectangle" data-shape-geometry="basic" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="1" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;background-color:${fillColor};border-color:${lineColor};border-width:1px"></div><p><br></p>`);
     const textBox = editor.querySelectorAll('.editor-textbox');
     const activeTextBox = textBox[textBox.length - 1];
     if (!activeTextBox) return;
@@ -2190,10 +2269,52 @@
     activeTextBox.focus();
     const range = document.createRange();
     range.selectNodeContents(activeTextBox);
+    range.collapse(true);
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
     activeTextBox.focus({ preventScroll: true });
+  });
+  const resizeTextBoxToFit = (textBox) => {
+    if (!textBox || !editor.contains(textBox)) return;
+    const left = Number.parseFloat(textBox.style.left) || 0;
+    const editorStyle = getComputedStyle(editor);
+    const paddingRight = Number.parseFloat(editorStyle.paddingRight) || 0;
+    const availableWidth = Math.max(1, editor.clientWidth - left - paddingRight - 16);
+    const measurement = textBox.cloneNode(true);
+    measurement.classList.remove('shape-selected');
+    measurement.style.setProperty('position', 'fixed', 'important');
+    measurement.style.setProperty('left', '-10000px', 'important');
+    measurement.style.setProperty('top', '0', 'important');
+    measurement.style.setProperty('width', 'max-content', 'important');
+    measurement.style.setProperty('min-width', '0', 'important');
+    measurement.style.setProperty('max-width', 'none', 'important');
+    measurement.style.setProperty('height', 'auto', 'important');
+    measurement.style.setProperty('min-height', '0', 'important');
+    measurement.style.setProperty('white-space', 'pre', 'important');
+    measurement.style.setProperty('visibility', 'hidden', 'important');
+    editor.append(measurement);
+    const contentWidth = measurement.getBoundingClientRect().width;
+    measurement.remove();
+    textBox.style.maxWidth = `${availableWidth}px`;
+    if (textBox.dataset.textboxManualWidth !== 'true') {
+      const minimumWidth = Math.min(240, availableWidth);
+      textBox.style.minWidth = `${minimumWidth}px`;
+      textBox.style.width = `${Math.max(minimumWidth, Math.min(availableWidth, contentWidth))}px`;
+    } else {
+      textBox.style.minWidth = '20px';
+    }
+    textBox.style.height = 'auto';
+    textBox.style.height = `${Math.max(100, textBox.scrollHeight)}px`;
+    if (activeShape === textBox) refreshShapeManipulators(textBox);
+  };
+  editor.addEventListener('input', (event) => {
+    const target = event.target instanceof Element ? event.target : event.target.parentElement;
+    const selectionNode = window.getSelection()?.anchorNode;
+    const selectionElement = selectionNode instanceof Element ? selectionNode : selectionNode?.parentElement;
+    const textBox = target?.closest('.editor-textbox') ||
+      selectionElement?.closest('.editor-textbox');
+    if (textBox) resizeTextBoxToFit(textBox);
   });
   const insertMenus = [
     { button: document.getElementById('table-button'), menu: document.getElementById('table-menu') },
@@ -3135,6 +3256,7 @@
     if (activeShape && activeShape !== shape) activeShape.classList.remove('shape-selected');
     activeShape = shape;
     activeShape.classList.add('shape-selected');
+    shapeToolbar.classList.toggle('is-textbox', shape.dataset.editorTextbox === 'true');
     shapeToolbar.hidden = true;
     document.getElementById('shape-fill-color').value = shape.dataset.shapeFill || '#dce8f5';
     document.getElementById('shape-line-color').value = shape.dataset.shapeLine || '#176b9a';
@@ -3285,6 +3407,10 @@
     const height = Math.abs(drag.handleY) > 0.01
       ? Math.max(activeShape.dataset.shapeType === 'line' ? 1 : 20, Math.min(10000, drag.height + heightDelta))
       : drag.height;
+    if (activeShape.dataset.editorTextbox === 'true' && Math.abs(drag.handleX) > 0.01) {
+      activeShape.dataset.textboxManualWidth = 'true';
+      activeShape.style.minWidth = '20px';
+    }
     activeShape.style.width = `${width}px`;
     activeShape.style.height = `${height}px`;
     const anchorX = -drag.handleX * width / 2;
@@ -3319,7 +3445,10 @@
     }
     if (!shapeResizeDrag || shapeResizeDrag.pointerId !== event.pointerId) return;
     shapeResizeDrag = null;
-    if (activeShape && editor.contains(activeShape)) scheduleSave();
+    if (activeShape && editor.contains(activeShape)) {
+      if (activeShape.dataset.editorTextbox === 'true') resizeTextBoxToFit(activeShape);
+      scheduleSave();
+    }
   };
   document.addEventListener('pointerup', finishShapeResize);
   document.addEventListener('pointercancel', finishShapeResize);
@@ -4802,8 +4931,17 @@
       } else if (action === 'shade-cell') {
         activeTableCell.style.backgroundColor = document.getElementById('table-cell-color').value;
       } else if (action === 'delete-table') {
+        clearTableBandSelection();
+        if (selectedObject === table) setSelectedObject(null);
         table.remove();
         updateTableToolbar(null);
+        tableLayoutTab.hidden = true;
+        if (tableLayoutTab.classList.contains('active')) {
+          activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+        }
+        scheduleSave();
+        updateCounts();
+        return;
       } else if (action === 'fit-text') {
         Array.from(table.rows).forEach((tableRow) => Array.from(tableRow.cells).forEach((cell) => {
           cell.style.whiteSpace = 'pre-wrap';
@@ -5120,6 +5258,7 @@
     const [portraitWidth, portraitHeight] = customPageDimensions || pageDimensions[pageSize];
     const width = landscape ? portraitHeight : portraitWidth;
     const height = landscape ? portraitWidth : portraitHeight;
+    document.body.classList.toggle('landscape-page', landscape);
     editor.style.setProperty('--layout-page-width', `${width}px`);
     editor.style.setProperty('--layout-page-height', `${height}px`);
     editor.style.minHeight = `${height}px`;
@@ -5153,6 +5292,49 @@
   });
   const marginFields = ['top', 'bottom', 'left', 'right'].map((side) =>
     document.getElementById(`margin-${side}-input`));
+  const customMarginsDialog = document.getElementById('custom-margins-dialog');
+  let marginGuidesTimer = 0;
+  const syncMarginGuides = (values) => {
+    const [top, bottom, left, right] = values.map((value) => value * 96);
+    const editorStyle = getComputedStyle(editor);
+    const pageWidth = editor.offsetWidth;
+    const pageHeight = Number.parseFloat(editorStyle.getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(editorStyle.getPropertyValue('--layout-page-gap')) || 20;
+    const pageCount = editor.querySelectorAll('.page-break').length + 1;
+    marginGuides.replaceChildren();
+    marginGuides.style.left = `${editor.offsetLeft}px`;
+    marginGuides.style.top = `${editor.offsetTop}px`;
+    marginGuides.style.width = `${pageWidth}px`;
+    marginGuides.style.height = `${editor.offsetHeight}px`;
+    marginGuides.style.transform = `scale(${zoom / 100})`;
+    const contentWidth = Math.max(0, pageWidth - left - right);
+    const contentHeight = Math.max(0, pageHeight - top - bottom);
+    const addLine = (className, x, y, width, height) => {
+      const line = document.createElement('span');
+      line.className = `margin-guide-line ${className}`;
+      line.style.left = `${x}px`;
+      line.style.top = `${y}px`;
+      line.style.width = `${width}px`;
+      line.style.height = `${height}px`;
+      marginGuides.append(line);
+    };
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+      const pageTop = pageIndex * (pageHeight + pageGap);
+      addLine('margin-guide-top', left, pageTop + top, contentWidth, 0);
+      addLine('margin-guide-bottom', left, pageTop + pageHeight - bottom, contentWidth, 0);
+      addLine('margin-guide-left', left, pageTop + top, 0, contentHeight);
+      addLine('margin-guide-right', pageWidth - right, pageTop + top, 0, contentHeight);
+    }
+  };
+  const showMarginGuides = (values) => {
+    window.clearTimeout(marginGuidesTimer);
+    syncMarginGuides(values);
+    marginGuides.hidden = false;
+    marginGuidesTimer = window.setTimeout(() => {
+      marginGuides.hidden = true;
+      marginGuides.replaceChildren();
+    }, 2000);
+  };
   const applyMargins = (values) => {
     const [top, bottom, left, right] = values;
     editor.style.padding = `${top * 96}px ${right * 96}px ${bottom * 96}px ${left * 96}px`;
@@ -5162,6 +5344,7 @@
     editor.style.setProperty('--document-margin-right', `${right * 96}px`);
     marginFields.forEach((field, index) => { field.value = String(values[index]); });
     syncRulers();
+    showMarginGuides(values);
   };
   const marginPresets = {
     normal: [1, 1, 1, 1],
@@ -5176,6 +5359,20 @@
       closeLayoutMenu('margins-menu');
     });
   });
+  document.getElementById('custom-margins-button').addEventListener('click', () => {
+    const padding = getComputedStyle(editor);
+    const values = [
+      Number.parseFloat(padding.paddingTop) / 96,
+      Number.parseFloat(padding.paddingBottom) / 96,
+      Number.parseFloat(padding.paddingLeft) / 96,
+      Number.parseFloat(padding.paddingRight) / 96
+    ];
+    marginFields.forEach((field, index) => { field.value = String(values[index]); });
+    closeLayoutMenu('margins-menu');
+    customMarginsDialog.showModal();
+  });
+  document.getElementById('close-custom-margins').addEventListener('click', () => customMarginsDialog.close());
+  document.getElementById('cancel-custom-margins').addEventListener('click', () => customMarginsDialog.close());
   document.getElementById('apply-custom-margins').addEventListener('click', () => {
     const values = marginFields.map((field) => Number(field.value));
     if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 3)) {
@@ -5183,7 +5380,7 @@
       return;
     }
     applyMargins(values);
-    closeLayoutMenu('margins-menu');
+    customMarginsDialog.close();
   });
   document.getElementById('apply-custom-size').addEventListener('click', () => {
     const width = Number(document.getElementById('page-width-input').value);

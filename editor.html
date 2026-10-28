@@ -229,19 +229,51 @@
         <button class="layout-action layout-menu-trigger" id="margins-button" type="button" aria-expanded="false" aria-controls="margins-menu"><img class="layout-glyph" src="assets/Media/margin-page-border-svgrepo-com.svg" alt=""><span>Margins</span></button>
         <div class="layout-menu" id="margins-menu" role="menu" aria-label="Page margins" hidden>
           <strong>Page margins</strong>
-          <button type="button" data-margin-preset="normal"><span>Normal</span><small>1″ on each side</small></button>
-          <button type="button" data-margin-preset="narrow"><span>Narrow</span><small>0.5″ on each side</small></button>
-          <button type="button" data-margin-preset="moderate"><span>Moderate</span><small>1″ top/bottom · 0.75″ sides</small></button>
-          <button type="button" data-margin-preset="wide"><span>Wide</span><small>1″ top/bottom · 2″ sides</small></button>
-          <button type="button" data-margin-preset="office"><span>Office default</span><small>1″ top/bottom · 1.25″ sides</small></button>
-          <div class="layout-custom-fields">
-            <label>Top <input id="margin-top-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
-            <label>Bottom <input id="margin-bottom-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
-            <label>Left <input id="margin-left-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
-            <label>Right <input id="margin-right-input" type="number" min="0" max="3" step="0.25" value="1"> in</label>
-          </div>
-          <button type="button" class="layout-menu-primary" id="apply-custom-margins">Apply custom margins</button>
+          <button type="button" data-margin-preset="normal">
+            <span class="margin-preset-icon" aria-hidden="true"></span>
+            <span class="margin-preset-copy"><strong>Normal</strong><small>Top: 1″ &nbsp; Bottom: 1″<br>Left: 1″ &nbsp; Right: 1″</small></span>
+          </button>
+          <button type="button" data-margin-preset="narrow">
+            <span class="margin-preset-icon" aria-hidden="true"></span>
+            <span class="margin-preset-copy"><strong>Narrow</strong><small>Top: 0.5″ &nbsp; Bottom: 0.5″<br>Left: 0.5″ &nbsp; Right: 0.5″</small></span>
+          </button>
+          <button type="button" data-margin-preset="moderate">
+            <span class="margin-preset-icon" aria-hidden="true"></span>
+            <span class="margin-preset-copy"><strong>Moderate</strong><small>Top: 1″ &nbsp; Bottom: 1″<br>Left: 0.75″ &nbsp; Right: 0.75″</small></span>
+          </button>
+          <button type="button" data-margin-preset="wide">
+            <span class="margin-preset-icon" aria-hidden="true"></span>
+            <span class="margin-preset-copy"><strong>Wide</strong><small>Top: 1″ &nbsp; Bottom: 1″<br>Left: 2″ &nbsp; Right: 2″</small></span>
+          </button>
+          <button type="button" data-margin-preset="office">
+            <span class="margin-preset-icon" aria-hidden="true"></span>
+            <span class="margin-preset-copy"><strong>Office 2003 Default</strong><small>Top: 1″ &nbsp; Bottom: 1″<br>Left: 1.25″ &nbsp; Right: 1.25″</small></span>
+          </button>
+          <button type="button" id="custom-margins-button" class="margin-custom-action" aria-haspopup="dialog">
+            <span class="margin-preset-icon margin-custom-icon" aria-hidden="true"><span>+</span></span>
+            <span class="margin-preset-copy"><strong>Custom Margins</strong><small>Define custom margins</small></span>
+          </button>
         </div>
+        <dialog id="custom-margins-dialog" class="custom-margins-dialog" aria-labelledby="custom-margins-title">
+          <header class="custom-margins-header">
+            <h2 id="custom-margins-title">Margins</h2>
+            <button type="button" id="close-custom-margins" aria-label="Close margin settings">×</button>
+          </header>
+          <div class="custom-margins-fields">
+            <label for="margin-top-input">Top</label>
+            <input id="margin-top-input" type="number" min="0" max="3" step="0.25" value="1">
+            <label for="margin-left-input">Left</label>
+            <input id="margin-left-input" type="number" min="0" max="3" step="0.25" value="1">
+            <label for="margin-bottom-input">Bottom</label>
+            <input id="margin-bottom-input" type="number" min="0" max="3" step="0.25" value="1">
+            <label for="margin-right-input">Right</label>
+            <input id="margin-right-input" type="number" min="0" max="3" step="0.25" value="1">
+          </div>
+          <div class="custom-margins-actions">
+            <button type="button" id="apply-custom-margins">OK</button>
+            <button type="button" id="cancel-custom-margins">Cancel</button>
+          </div>
+        </dialog>
         <button class="layout-action layout-menu-trigger" id="orientation-button" type="button" aria-expanded="false" aria-controls="orientation-menu"><span class="layout-glyph orientation-glyph">▱</span><span>Orientation</span></button>
         <div class="layout-menu" id="orientation-menu" role="menu" aria-label="Page orientation" hidden>
           <strong>Page orientation</strong>
@@ -383,7 +415,7 @@
 
   <main class="document-workspace">
     <aside class="keyboard-sidebar" aria-label="On-screen Urdu keyboard">
-      <button id="onscreen-keyboard-toggle" class="keyboard-toggle" type="button" aria-expanded="false" aria-controls="onscreen-keyboard">⌨ <span>Urdu keyboard</span></button>
+      <button id="onscreen-keyboard-toggle" class="keyboard-toggle" type="button" aria-label="Toggle Urdu keyboard" aria-expanded="false" aria-controls="onscreen-keyboard">⌨ <span>Urdu keyboard</span></button>
       <section id="onscreen-keyboard" class="onscreen-keyboard" aria-label="On-screen keyboard" hidden>
         <div class="keyboard-layout-tabs" role="tablist" aria-label="Keyboard layout">
           <button type="button" role="tab" aria-selected="true" data-keyboard-layout="urdu">اردو</button>
@@ -392,7 +424,6 @@
         <div class="keyboard-layout" data-keyboard-panel="urdu">
           <div class="keyboard-heading">Urdu keyboard</div>
           <div id="phonetic-keyboard" class="phonetic-keyboard" aria-label="Urdu phonetic keyboard"></div>
-          <button id="keyboard-shift" class="keyboard-shift-toggle" type="button" aria-pressed="false">⇧ Shift</button>
         </div>
         <div class="keyboard-layout" data-keyboard-panel="symbols" hidden>
           <div class="keyboard-heading">Urdu symbols / علامات</div>
@@ -431,6 +462,7 @@
       <div class="document-stage">
         <div class="page-frame">
           <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" aria-autocomplete="list" aria-controls="word-suggestions" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
+          <div id="margin-guides" class="margin-guides" aria-hidden="true" hidden></div>
           <div class="add-page-control"><button id="add-page-button" type="button">＋ Add new page</button></div>
           <div class="page-actions" aria-label="Current page actions">
             <button id="copy-page-button" type="button" aria-label="Copy current page below" title="Copy page below">
