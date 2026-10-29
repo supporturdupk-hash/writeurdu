@@ -38,6 +38,7 @@
         <option value="pdf">PDF</option>
         <option value="png">PNG image</option>
       </select>
+      <p id="pdf-export-help" class="pdf-export-help">Your PDF will download directly to your device.</p>
       <fieldset class="export-preset">
         <legend>Presets</legend>
         <div class="export-preset-options">
@@ -212,16 +213,16 @@
         <input id="image-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
-        <button class="insert-action" id="shapes-button" type="button" aria-expanded="false" aria-controls="shapes-menu"><span class="insert-glyph">◇</span><span>Shapes</span></button>
+        <button class="insert-action" id="shapes-button" type="button" aria-expanded="false" aria-controls="shapes-menu"><img src="assets/Media/shaps.png" alt=""><span>Shapes</span></button>
         <div id="shapes-menu" class="insert-menu shapes-menu" role="dialog" aria-label="Insert shapes" hidden>
           <div id="shape-library"></div>
         </div>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group">
-        <button class="insert-action" id="text-box-button" type="button"><span class="insert-glyph">T</span><span>Text Box</span></button>
+        <button class="insert-action" id="text-box-button" type="button"><img src="assets/Media/textbox-svgrepo-com.svg" alt=""><span>Text Box</span></button>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group">
-        <button class="insert-action" id="watermark-button" type="button"><span class="insert-glyph">◇</span><span>Watermark</span></button>
+        <button class="insert-action" id="watermark-button" type="button"><img src="assets/Media/watermark.jpg" alt=""><span>Watermark</span></button>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
         <button class="insert-action" id="page-number-button" type="button" aria-expanded="false" aria-controls="page-number-menu"><img src="assets/Media/page-number-svgrepo-com.svg" alt=""><span>Page Number</span></button>

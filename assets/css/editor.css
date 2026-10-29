@@ -792,6 +792,8 @@ body.landscape-page .keyboard-sidebar:not(.keyboard-open) .keyboard-toggle span 
 .download-field-label, .export-preset legend, .export-page-selection legend { padding: 0; color: var(--ink); font-size: 12px; font-weight: 600; }
 .export-format { width: 100%; min-height: 40px; margin-top: -9px; padding: 0 12px; border: 1px solid #d2d5dc; border-radius: 10px; outline: 0; background: var(--surface); color: var(--ink); font-size: 13px; }
 .export-format:focus-visible { border-color: #9660f5; box-shadow: 0 0 0 2px #8b5cf633; }
+.pdf-export-help { margin: -10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.pdf-export-help[hidden] { display: none; }
 .export-preset, .export-page-selection { min-width: 0; display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
 .export-preset-options, .export-page-options { min-height: 40px; display: grid; grid-auto-columns: 1fr; grid-auto-flow: column; gap: 3px; padding: 4px; border-radius: 10px; background: #f0f1f4; }
 .export-preset-options button, .export-page-options button { min-width: 0; padding: 5px 7px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #535967; font-size: 12px; white-space: nowrap; }

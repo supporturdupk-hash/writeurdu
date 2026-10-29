@@ -5445,11 +5445,11 @@
   document.getElementById('preview-close').addEventListener('click', () => previewDialog.close());
   document.getElementById('preview-print').addEventListener('click', () => {
     previewDialog.close();
-    window.setTimeout(() => window.print(), 100);
+    window.setTimeout(() => printDocument(), 100);
   });
   document.getElementById('focus-toggle').addEventListener('click', openDocumentPreview);
   document.getElementById('view-focus-toggle').addEventListener('click', openDocumentPreview);
-  document.getElementById('print-button').addEventListener('click', () => window.print());
+  document.getElementById('print-button').addEventListener('click', () => printDocument());
   document.getElementById('theme-toggle').addEventListener('click', (event) => {
     const active = document.body.classList.toggle('dark-mode');
     event.currentTarget.setAttribute('aria-pressed', String(active));
@@ -5729,6 +5729,7 @@
   const exportPageThumbnails = document.getElementById('export-page-thumbnails');
   const exportCustomPages = document.getElementById('export-custom-pages');
   const exportDownloadAction = document.getElementById('export-download-action');
+  const pdfExportHelp = document.getElementById('pdf-export-help');
   let exportPreset = 'digital';
   let exportPageMode = 'all';
   let customExportPages = new Set();
@@ -5823,6 +5824,7 @@
   const updateExportButtonLabel = () => {
     const format = exportFormat.value;
     exportDownloadAction.textContent = `Download ${format === 'pdf' ? 'PDF' : 'PNG image'}`;
+    pdfExportHelp.hidden = format !== 'pdf';
   };
   const positionDownloadPanel = () => {
     const buttonRect = downloadButton.getBoundingClientRect();
@@ -5863,8 +5865,8 @@
     branding.append(mark, name);
     return branding;
   };
-  const exportPdf = (pages) => {
-    const branding = createExportBranding();
+  const exportPrintDocument = (pages, includeBranding = true) => {
+    const branding = includeBranding ? createExportBranding() : null;
     const printDocument = editor.cloneNode(false);
     printDocument.removeAttribute('id');
     printDocument.removeAttribute('contenteditable');
@@ -5883,20 +5885,31 @@
     });
     if (footer) printDocument.append(footer.cloneNode(true));
     document.body.append(printDocument);
-    document.body.append(branding);
+    if (branding) document.body.append(branding);
     document.body.classList.add('pdf-export-active');
     let cleanupTimer;
     const cleanup = () => {
       window.clearTimeout(cleanupTimer);
       document.body.classList.remove('pdf-export-active');
-      branding.remove();
+      branding?.remove();
       printDocument.remove();
     };
     window.addEventListener('afterprint', cleanup, { once: true });
     cleanupTimer = window.setTimeout(cleanup, 300000);
     window.print();
   };
-  const exportPng = async (pages) => {
+  const printSelectedPages = (pages, includeBranding) => {
+    try {
+      exportPrintDocument(pages, includeBranding);
+    } catch (error) {
+      console.error('Could not open the document print dialog.', error);
+      showToast('Could not open the print dialog. Try again.');
+    }
+  };
+  const printDocument = () => {
+    printSelectedPages(Array.from({ length: pageCount() }, (_, index) => index), false);
+  };
+  const renderExportCanvas = async (pages) => {
     await document.fonts.ready;
     const width = editor.offsetWidth;
     const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
@@ -5905,12 +5918,13 @@
     const externalImage = Array.from(editor.querySelectorAll('img')).find((image) =>
       image.currentSrc && !image.currentSrc.startsWith('data:') &&
       new URL(image.currentSrc, document.baseURI).origin !== window.location.origin);
-    if (externalImage) throw new Error('Download external images before exporting the document as PNG.');
+    if (externalImage) throw new Error('Download external images before exporting the document as a PNG or PDF.');
     const height = pageHeight * pages.length;
     const requestedScale = exportPreset === 'print' ? 2 : 1;
     const scale = Math.min(requestedScale, 8192 / width, 8192 / height, Math.sqrt(64000000 / (width * height)));
     const outputWidth = Math.max(1, Math.floor(width * scale));
-    const outputHeight = Math.max(1, Math.floor(height * scale));
+    const outputPageHeight = Math.max(1, Math.floor(pageHeight * scale));
+    const outputHeight = outputPageHeight * pages.length;
     const canvas = document.createElement('canvas');
     canvas.width = outputWidth;
     canvas.height = outputHeight;
@@ -5918,7 +5932,7 @@
     if (!context) throw new Error('This browser could not create an image canvas.');
     const editorRect = editor.getBoundingClientRect();
     const layoutScale = editorRect.width / width || 1;
-    context.scale(scale, scale);
+    context.scale(outputWidth / width, outputPageHeight / pageHeight);
     context.fillStyle = '#fff';
     context.fillRect(0, 0, width, height);
     const editorStyle = getComputedStyle(editor);
@@ -6093,14 +6107,100 @@
       context.textAlign = 'left';
       context.fillText('Urdu Writer', brandX + 27, brandY + 11);
     });
+    return { canvas, width, pageHeight, outputPageHeight };
+  };
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const createPdfBlob = async ({ canvas, width, pageHeight, outputPageHeight, pages }) => {
+    const encoder = new TextEncoder();
+    const objectBodies = [];
+    objectBodies[1] = encoder.encode('<< /Type /Catalog /Pages 2 0 R >>');
+    const pageObjectIds = pages.map((_, index) => 3 + index * 3);
+    objectBodies[2] = encoder.encode(
+      `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`
+    );
+    const widthPoints = width * .75;
+    const heightPoints = pageHeight * .75;
+    for (let index = 0; index < pages.length; index += 1) {
+      const pageObjectId = pageObjectIds[index];
+      const contentObjectId = pageObjectId + 1;
+      const imageObjectId = pageObjectId + 2;
+      const imageCanvas = document.createElement('canvas');
+      imageCanvas.width = canvas.width;
+      imageCanvas.height = outputPageHeight;
+      const imageContext = imageCanvas.getContext('2d');
+      if (!imageContext) throw new Error('This browser could not create a PDF page image.');
+      imageContext.drawImage(canvas, 0, index * outputPageHeight, canvas.width, outputPageHeight,
+        0, 0, imageCanvas.width, imageCanvas.height);
+      const imageBlob = await new Promise((resolve) => imageCanvas.toBlob(
+        resolve, 'image/jpeg', exportPreset === 'print' ? .98 : .94
+      ));
+      if (!imageBlob) throw new Error('The browser could not encode a PDF page.');
+      const imageBytes = new Uint8Array(await imageBlob.arrayBuffer());
+      const contentBytes = encoder.encode(
+        `q ${widthPoints.toFixed(2)} 0 0 ${heightPoints.toFixed(2)} 0 0 cm /Im0 Do Q`
+      );
+      objectBodies[pageObjectId] = encoder.encode(
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${widthPoints.toFixed(2)} ${heightPoints.toFixed(2)}] ` +
+        `/Resources << /XObject << /Im0 ${imageObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`
+      );
+      objectBodies[contentObjectId] = new Blob([
+        encoder.encode(`<< /Length ${contentBytes.length} >>\nstream\n`),
+        contentBytes,
+        encoder.encode('\nendstream')
+      ]);
+      objectBodies[imageObjectId] = new Blob([
+        encoder.encode(
+          `<< /Type /XObject /Subtype /Image /Width ${imageCanvas.width} /Height ${imageCanvas.height} ` +
+          `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`
+        ),
+        imageBytes,
+        encoder.encode('\nendstream')
+      ]);
+    }
+    const chunks = [];
+    let byteOffset = 0;
+    const append = (chunk) => {
+      chunks.push(chunk);
+      byteOffset += chunk.size ?? chunk.byteLength;
+    };
+    append(encoder.encode('%PDF-1.4\n'));
+    const objectOffsets = [0];
+    for (let objectId = 1; objectId < objectBodies.length; objectId += 1) {
+      objectOffsets[objectId] = byteOffset;
+      append(encoder.encode(`${objectId} 0 obj\n`));
+      append(objectBodies[objectId]);
+      append(encoder.encode('\nendobj\n'));
+    }
+    const crossReferenceOffset = byteOffset;
+    let crossReference = `xref\n0 ${objectBodies.length}\n0000000000 65535 f \n`;
+    for (let objectId = 1; objectId < objectBodies.length; objectId += 1) {
+      crossReference += `${String(objectOffsets[objectId]).padStart(10, '0')} 00000 n \n`;
+    }
+    append(encoder.encode(
+      `${crossReference}trailer\n<< /Size ${objectBodies.length} /Root 1 0 R >>\n` +
+      `startxref\n${crossReferenceOffset}\n%%EOF`
+    ));
+    return new Blob(chunks, { type: 'application/pdf' });
+  };
+  const exportPng = async (pages) => {
+    const { canvas } = await renderExportCanvas(pages);
     const png = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
     if (!png) throw new Error('The browser could not encode the document as a PNG image.');
-    const pngUrl = URL.createObjectURL(png);
-    const link = document.createElement('a');
-    link.href = pngUrl;
-    link.download = safeFilename(pages.length > 1 ? 'png' : `page-${pages[0] + 1}.png`);
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+    downloadBlob(png, safeFilename(pages.length > 1 ? 'png' : `page-${pages[0] + 1}.png`));
+  };
+  const exportPdf = async (pages) => {
+    const rendered = await renderExportCanvas(pages);
+    const pdf = await createPdfBlob({ ...rendered, pages });
+    downloadBlob(pdf, safeFilename(pages.length > 1 ? 'pdf' : `page-${pages[0] + 1}.pdf`));
   };
   downloadButton.addEventListener('click', () => {
     setDownloadPanelOpen(downloadPanel.getAttribute('aria-hidden') === 'true');
@@ -6156,7 +6256,10 @@
     const pages = selectedExportPages();
     setDownloadPanelOpen(false);
     if (exportFormat.value === 'pdf') {
-      exportPdf(pages);
+      exportPdf(pages).catch((error) => {
+        console.error('Could not export the document as a PDF.', error);
+        showToast(error instanceof Error ? error.message : 'PDF export failed. Try again.');
+      });
       return;
     }
     exportPng(pages).catch((error) => {
@@ -6288,7 +6391,7 @@
         window.location.href = 'editor.html?new=1';
       });
     } else if (key === 'p') {
-      prevent(() => window.print());
+      prevent(printDocument);
     } else if (key === 'f') {
       prevent(() => document.getElementById('find-button').click());
     } else if (key === 'h') {
