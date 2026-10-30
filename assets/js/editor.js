@@ -7,7 +7,9 @@
   const DOCUMENTS_KEY = 'urdu-writer-documents-v1';
   const RECOVERY_KEY_PREFIX = 'urdu-writer-recovery-v1-';
   let activeDocumentId = '';
+  let alignmentGuides = [];
   let saveTimer;
+  let paginationFrame = 0;
   let zoom = 100;
   let urduTyping = true;
   let landscape = false;
@@ -125,6 +127,9 @@
           clean.dataset.pageNumberField = value;
         } else if (name === 'data-page-number-set' && node.tagName === 'SPAN' && value === 'true') {
           clean.dataset.pageNumberSet = 'true';
+        } else if (name === 'data-auto-page-break' && node.tagName === 'DIV' &&
+          node.classList.contains('page-break') && value === 'true') {
+          clean.dataset.autoPageBreak = 'true';
         } else if (name === 'data-watermark' && ['DIV', 'IMG'].includes(node.tagName) &&
           (node.tagName === 'DIV' && value === 'text' || node.tagName === 'IMG' && value === 'image')) {
           clean.dataset.watermark = value;
@@ -132,9 +137,12 @@
           /^(?:0?\.\d{1,2}|1(?:\.0{1,2})?)$/.test(value) &&
           Number(value) >= 0.05 && Number(value) <= 1) {
           clean.dataset.watermarkOpacity = value;
+        } else if (name === 'data-watermark-rotation' && ['DIV', 'IMG'].includes(node.tagName) &&
+          /^(?:0|[1-9]\d?|[12]\d\d|3[0-5]\d)$/.test(value)) {
+          clean.dataset.watermarkRotation = value;
         } else if (name === 'contenteditable' && value === 'false' &&
           (node.classList.contains('page-break') || node.classList.contains('column-break') || node.classList.contains('editor-shape') ||
-            isPageNumberField || (documentRegion && node.dataset.pageNumberLocation) ||
+            isPageNumberField || documentRegion ||
             ['text', 'image'].includes(node.dataset.watermark))) {
           clean.setAttribute(name, 'false');
         } else if (['colspan', 'rowspan'].includes(name) && ['TD', 'TH'].includes(node.tagName)) {
@@ -307,6 +315,10 @@
         const rotation = Number(clean.dataset.shapeRotation || 0);
         if (rotation) clean.style.rotate = `${rotation}deg`;
       }
+      if (['DIV', 'IMG'].includes(clean.tagName) && clean.dataset.watermark) {
+        const rotation = Number(clean.dataset.watermarkRotation) || 0;
+        if (rotation) clean.style.rotate = `${rotation}deg`;
+      }
       if (clean.tagName === 'IMG') {
         const rotation = Number(clean.dataset.imageRotation || 0);
         if (rotation) clean.style.rotate = `${rotation}deg`;
@@ -329,7 +341,6 @@
       Array.from(node.childNodes).forEach((child) => clean.append(cleanNode(child)));
       return clean;
     };
-
     const result = document.createDocumentFragment();
     Array.from(parsed.body.childNodes).forEach((child) => result.append(cleanNode(child)));
     const container = document.createElement('div');
@@ -354,6 +365,20 @@
     syncPageNumberPrintLocation();
   }
 
+  function syncDocumentHeaderSpacing() {
+    const header = editor.querySelector('.document-header:not([data-page-number-location])');
+    editor.classList.toggle('has-document-header', Boolean(header));
+    if (!header) {
+      editor.style.removeProperty('--document-content-top');
+      return;
+    }
+    const marginTop = Number.parseFloat(editor.style.getPropertyValue('--document-margin-top')) ||
+      rulerPixels(getComputedStyle(editor).paddingTop);
+    const headerHeight = header.offsetHeight || 36;
+    editor.style.setProperty('--document-content-top',
+      `${Math.max(marginTop, marginTop / 2 + headerHeight + 20)}px`);
+  }
+
   function syncPageBreakLayout() {
     const pageBreaks = Array.from(editor.querySelectorAll('.page-break'));
     editor.dataset.multipage = String(pageBreaks.length > 0);
@@ -366,6 +391,199 @@
       const pageOffset = ((pageBreak.offsetTop % pageStride) + pageStride) % pageStride;
       const spaceToNextPage = pageStride - pageOffset + pageTopMargin;
       pageBreak.style.setProperty('--page-break-space', `${spaceToNextPage}px`);
+    });
+    syncAlignmentGuides();
+  }
+
+  function autoPageBreakCandidate(skippedNodes = new Set()) {
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+    const pageStride = pageHeight + pageGap;
+    const editorRect = editor.getBoundingClientRect();
+    const scaleY = editorRect.height / Math.max(editor.offsetHeight, 1);
+    const style = getComputedStyle(editor);
+    const topMargin = rulerPixels(style.paddingTop);
+    const bottomMargin = rulerPixels(style.paddingBottom);
+    const contentHeight = pageHeight - topMargin - bottomMargin;
+    for (const node of editor.children) {
+      if (node.matches('.page-break, .document-header, .document-footer, .editor-shape, [data-watermark]') ||
+        skippedNodes.has(node) || getComputedStyle(node).position === 'absolute') continue;
+      const bounds = node.getBoundingClientRect();
+      if (!bounds.height) continue;
+      const top = Math.max(0, (bounds.top - editorRect.top) / scaleY);
+      const page = Math.floor(top / pageStride);
+      const pageTop = page * pageStride;
+      const bottom = (bounds.bottom - editorRect.top) / scaleY;
+      const pageBottom = pageTop + pageHeight - bottomMargin;
+      if (top < pageTop + topMargin - 1 || bottom > pageBottom + 1) {
+        const splittableBlock = /^(P|H[1-6]|BLOCKQUOTE|DIV|LI|UL|OL)$/.test(node.tagName) &&
+          !node.querySelector('table');
+        const remainingContentHeight = pageBottom - top;
+        const split = splittableBlock && remainingContentHeight > 0 &&
+          node.offsetHeight > remainingContentHeight;
+        if (node.offsetHeight > contentHeight && !split) continue;
+        return {
+          node,
+          page,
+          top,
+          pageContentTop: pageTop + topMargin,
+          pageBottom: editorRect.top + pageBottom * scaleY,
+          contentHeight,
+          split
+        };
+      }
+    }
+    return null;
+  }
+
+  function findParagraphSplitPoint(block, pageBottom) {
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+      acceptNode(node) {
+        return node.parentElement?.closest('[data-pagination-caret]')
+          ? NodeFilter.FILTER_REJECT
+          : node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'BR'
+            ? NodeFilter.FILTER_SKIP
+            : NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let best = null;
+    while (walker.nextNode()) {
+      const currentNode = walker.currentNode;
+      if (currentNode.nodeType === Node.ELEMENT_NODE) {
+        const bounds = currentNode.getBoundingClientRect();
+        if (bounds.height && bounds.bottom <= pageBottom + 1) {
+          best = {
+            node: currentNode.parentNode,
+            offset: Array.prototype.indexOf.call(currentNode.parentNode.childNodes, currentNode) + 1
+          };
+          continue;
+        }
+        break;
+      }
+      const textNode = currentNode;
+      if (!textNode.length) continue;
+      const segments = typeof Intl.Segmenter === 'function'
+        ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(textNode.data))
+        : (() => {
+          let offset = 0;
+          return Array.from(textNode.data).map((segment) => {
+            const result = { index: offset, segment };
+            offset += segment.length;
+            return result;
+          });
+        })();
+      const offsets = segments.map(({ index, segment }) => index + segment.length);
+      const range = document.createRange();
+      const fits = (count) => {
+        if (!count) return true;
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, offsets[count - 1]);
+        const rect = range.getBoundingClientRect();
+        return rect.height > 0 && rect.bottom <= pageBottom + 1;
+      };
+      if (fits(offsets.length)) {
+        best = { node: textNode, offset: textNode.length };
+        continue;
+      }
+      let low = 0;
+      let high = offsets.length;
+      while (low < high) {
+        const middle = Math.ceil((low + high) / 2);
+        if (fits(middle)) low = middle;
+        else high = middle - 1;
+      }
+      if (low) {
+        let offset = offsets[low - 1];
+        const lastSpace = Math.max(textNode.data.lastIndexOf(' ', offset - 1),
+          textNode.data.lastIndexOf('\n', offset - 1));
+        if (lastSpace > 0 && offset - lastSpace < 80) offset = lastSpace + 1;
+        best = { node: textNode, offset };
+      }
+      break;
+    }
+    if (!best || !best.offset) return null;
+    const trailingRange = document.createRange();
+    trailingRange.setStart(best.node, best.offset);
+    trailingRange.setEnd(block, block.childNodes.length);
+    const trailingContent = trailingRange.cloneContents();
+    return trailingContent.textContent.trim() || trailingContent.querySelector('br') ? best : null;
+  }
+
+  function hasPaginationContent(block) {
+    return Boolean(block.textContent.trim() || block.querySelector('br'));
+  }
+
+  function paginateEditor() {
+    const candidate = autoPageBreakCandidate();
+    const hasAutomaticBreaks = editor.querySelector('.page-break[data-auto-page-break="true"]');
+    if (!candidate && !hasAutomaticBreaks) return;
+    const selection = window.getSelection();
+    let caretMarker = null;
+    if (selection?.isCollapsed && selection.rangeCount &&
+      editor.contains(selection.anchorNode) && !selection.anchorNode.parentElement?.closest('[data-document-region]')) {
+      caretMarker = document.createElement('span');
+      caretMarker.dataset.paginationCaret = 'true';
+      caretMarker.setAttribute('aria-hidden', 'true');
+      caretMarker.style.cssText = 'display:inline-block;width:0;height:0;overflow:hidden';
+      caretMarker.textContent = '\u200b';
+      selection.getRangeAt(0).insertNode(caretMarker);
+    }
+    editor.querySelectorAll('.page-break[data-auto-page-break="true"]').forEach((pageBreak) => pageBreak.remove());
+    let changes = 0;
+    const skippedNodes = new Set();
+    while (changes < 200) {
+      syncPageBreakLayout();
+      const overflow = autoPageBreakCandidate(skippedNodes);
+      if (!overflow) break;
+      let continuation = null;
+      if (overflow.split) {
+        const point = findParagraphSplitPoint(overflow.node, overflow.pageBottom);
+        if (point) {
+          const suffix = document.createRange();
+          suffix.setStart(point.node, point.offset);
+          suffix.setEnd(overflow.node, overflow.node.childNodes.length);
+          continuation = overflow.node.cloneNode(false);
+          continuation.append(suffix.extractContents());
+          if (!hasPaginationContent(continuation)) continuation.remove();
+          else editor.insertBefore(continuation, overflow.node.nextSibling);
+        } else {
+          if (overflow.top <= overflow.pageContentTop + 1 &&
+            overflow.node.offsetHeight > overflow.contentHeight) {
+            skippedNodes.add(overflow.node);
+            continue;
+          }
+          continuation = overflow.node;
+        }
+      }
+      if (!continuation) continuation = overflow.node;
+      const pageBreak = createPageBreak();
+      pageBreak.dataset.autoPageBreak = 'true';
+      editor.insertBefore(pageBreak, continuation);
+      changes += 1;
+    }
+    if (changes === 200 && autoPageBreakCandidate(skippedNodes)) {
+      console.error('Automatic pagination stopped after reaching the 200-page safety limit.');
+      showToast('This document is too long to paginate automatically.');
+    }
+    if (caretMarker?.isConnected) {
+      const range = document.createRange();
+      range.setStartBefore(caretMarker);
+      range.collapse(true);
+      caretMarker.remove();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    syncPageBreakLayout();
+    updateCounts();
+    syncRulers();
+    scheduleSave();
+  }
+
+  function queueAutoPagination() {
+    if (paginationFrame) return;
+    paginationFrame = window.requestAnimationFrame(() => {
+      paginationFrame = 0;
+      paginateEditor();
     });
   }
 
@@ -619,6 +837,7 @@
   const horizontalRuler = document.getElementById('horizontal-ruler');
   const verticalRuler = document.getElementById('vertical-ruler');
   const pageFrame = document.querySelector('.page-frame');
+  const alignmentGuidesLayer = document.getElementById('alignment-guides');
   const documentStage = document.querySelector('.document-stage');
   const landscapeScrollbar = document.getElementById('landscape-scrollbar');
   const rulerIndent = { firstLine: 0, paragraphStart: 0, paragraphEnd: 0 };
@@ -707,6 +926,7 @@
 
     syncVerticalRuler();
     syncLandscapeScrollbar();
+    syncAlignmentGuides();
   }
 
   function rulerDragValue(event, track, vertical) {
@@ -718,6 +938,144 @@
     const offset = vertical ? event.clientY - rect.top : event.clientX - rect.left;
     return Math.max(0, Math.min(dimension, offset * dimension / renderedDimension));
   }
+
+  function syncAlignmentGuides() {
+    alignmentGuidesLayer.style.width = `${editor.offsetWidth}px`;
+    alignmentGuidesLayer.style.height = `${editor.offsetHeight}px`;
+    alignmentGuidesLayer.style.transform = `scale(${zoom / 100})`;
+  }
+
+  function positionAlignmentGuide(line, guide) {
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+    const pageTop = guide.page * (pageHeight + pageGap);
+    if (guide.axis === 'x') {
+      line.style.left = `${guide.position}px`;
+      line.style.top = `${pageTop}px`;
+      line.style.height = `${pageHeight}px`;
+    } else {
+      line.style.left = '0';
+      line.style.top = `${pageTop + guide.position}px`;
+      line.style.width = `${editor.offsetWidth}px`;
+    }
+  }
+
+  function renderAlignmentGuides() {
+    syncAlignmentGuides();
+    alignmentGuidesLayer.replaceChildren();
+    alignmentGuides.forEach((guide, index) => {
+      const line = document.createElement('div');
+      line.className = 'alignment-guide';
+      line.dataset.axis = guide.axis;
+      line.dataset.guideIndex = String(index);
+      line.tabIndex = 0;
+      line.setAttribute('role', 'separator');
+      line.setAttribute('aria-label',
+        `${guide.axis === 'x' ? 'Vertical' : 'Horizontal'} alignment guide on page ${guide.page + 1}; drag to move or press Delete to remove`);
+      positionAlignmentGuide(line, guide);
+      alignmentGuidesLayer.append(line);
+    });
+    document.querySelectorAll('[data-guide-add]').forEach((button) => {
+      const axis = button.dataset.guideAdd;
+      const active = alignmentGuides.some((guide) => guide.axis === axis);
+      const direction = axis === 'x' ? 'vertical' : 'horizontal';
+      button.setAttribute('aria-pressed', String(active));
+      button.title = `${active ? 'Remove' : 'Add'} a ${direction} blue alignment guide`;
+      button.querySelector('span:last-child').textContent =
+        `${active ? 'Remove' : 'Add'} ${direction} guide`;
+    });
+  }
+
+  function addAlignmentGuide(axis, page, position) {
+    if (!['x', 'y'].includes(axis) || alignmentGuides.some((guide) => guide.axis === axis)) return;
+    alignmentGuides.push({ axis, page, position });
+    renderAlignmentGuides();
+    scheduleSave();
+    alignmentGuidesLayer.lastElementChild?.focus();
+  }
+
+  function removeAlignmentGuide(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= alignmentGuides.length) return;
+    alignmentGuides.splice(index, 1);
+    renderAlignmentGuides();
+    scheduleSave();
+  }
+
+  alignmentGuidesLayer.addEventListener('pointerdown', (event) => {
+    const line = event.target.closest('.alignment-guide');
+    if (!line || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    line.focus();
+    line.setPointerCapture(event.pointerId);
+    const index = Number(line.dataset.guideIndex);
+    const guide = alignmentGuides[index];
+    if (!guide) return;
+    const move = (moveEvent) => {
+      if (moveEvent.pointerId !== event.pointerId) return;
+      const rect = editor.getBoundingClientRect();
+      const scaleX = rect.width / Math.max(editor.offsetWidth, 1);
+      const scaleY = rect.height / Math.max(editor.offsetHeight, 1);
+      const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+      const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+      guide.position = guide.axis === 'x'
+        ? Math.max(0, Math.min(editor.offsetWidth, (moveEvent.clientX - rect.left) / scaleX))
+        : Math.max(0, Math.min(pageHeight,
+          (moveEvent.clientY - rect.top) / scaleY - guide.page * (pageHeight + pageGap)));
+      positionAlignmentGuide(line, guide);
+      moveEvent.preventDefault();
+    };
+    const finish = (finishEvent) => {
+      if (finishEvent.pointerId !== event.pointerId) return;
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', finish);
+      document.removeEventListener('pointercancel', finish);
+      scheduleSave();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', finish);
+    document.addEventListener('pointercancel', finish);
+  });
+  alignmentGuidesLayer.addEventListener('keydown', (event) => {
+    const line = event.target.closest('.alignment-guide');
+    if (!line) return;
+    const index = Number(line.dataset.guideIndex);
+    const guide = alignmentGuides[index];
+    if (!guide) return;
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      removeAlignmentGuide(index);
+      return;
+    }
+    const step = event.shiftKey ? 10 : 1;
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    guide.position = Math.max(0, Math.min(guide.axis === 'x' ? editor.offsetWidth : pageHeight,
+      guide.position + (event.key === 'ArrowRight' || event.key === 'ArrowDown' ? step :
+        event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -step : 0)));
+    if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(event.key)) return;
+    event.preventDefault();
+    positionAlignmentGuide(line, guide);
+    scheduleSave();
+  });
+  horizontalRuler.parentElement.title = 'Double-click to add a vertical blue guide; drag the guide to align objects.';
+  verticalRuler.parentElement.title = 'Double-click to add a horizontal blue guide; drag the guide to align objects.';
+  horizontalRuler.parentElement.addEventListener('dblclick', (event) => {
+    if (event.target.closest('[data-ruler-handle]')) return;
+    const rect = editor.getBoundingClientRect();
+    const scaleX = rect.width / Math.max(editor.offsetWidth, 1);
+    const page = Math.max(0, Number(verticalRuler.dataset.pageIndex) || 0);
+    addAlignmentGuide('x', page, Math.max(0, Math.min(editor.offsetWidth, (event.clientX - rect.left) / scaleX)));
+  });
+  verticalRuler.parentElement.addEventListener('dblclick', (event) => {
+    if (event.target.closest('[data-ruler-handle]')) return;
+    const rect = editor.getBoundingClientRect();
+    const scaleY = rect.height / Math.max(editor.offsetHeight, 1);
+    const page = Math.max(0, Number(verticalRuler.dataset.pageIndex) || 0);
+    const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+    const pageGap = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-gap')) || 20;
+    const localY = (event.clientY - rect.top) / scaleY - page * (pageHeight + pageGap);
+    addAlignmentGuide('y', page, Math.max(0, Math.min(pageHeight, localY)));
+  });
 
   function setRulerValue(handle, value) {
     const style = getComputedStyle(editor);
@@ -747,6 +1105,7 @@
       editor.style.setProperty('--ruler-paragraph-end-indent', `${rulerIndent.paragraphEnd}px`);
     }
     syncRulers();
+    queueAutoPagination();
     scheduleSave();
   }
 
@@ -782,6 +1141,7 @@
         id: activeDocumentId,
         name: nameInput.value.trim() || 'Untitled document',
         html: editor.innerHTML,
+        alignmentGuides,
         pageBorderStyle,
         pageBorderColor,
         updatedAt: new Date().toISOString()
@@ -810,6 +1170,7 @@
         id: activeDocumentId,
         name: nameInput.value.trim() || 'Untitled document',
         html: editor.innerHTML,
+        alignmentGuides,
         pageBorderStyle,
         pageBorderColor,
         updatedAt: new Date().toISOString()
@@ -860,11 +1221,13 @@
     let recoveredDraft = false;
     if (params.get('new') === '1') {
       activeDocumentId = createDocumentId();
+      alignmentGuides = [];
       nameInput.value = 'Untitled document';
       editor.innerHTML = '<p><br></p>';
       pageBorderStyle = 'none';
       pageBorderColor = '#697586';
       applyPageBorder();
+      renderAlignmentGuides();
       window.history.replaceState({}, document.title, `${window.location.pathname}?document=${encodeURIComponent(activeDocumentId)}`);
       return;
     }
@@ -900,6 +1263,8 @@
         const stored = localStorage.getItem(STORAGE_KEY);
         if (!stored) {
           activeDocumentId = createDocumentId();
+          alignmentGuides = [];
+          renderAlignmentGuides();
           window.history.replaceState({}, document.title, `${window.location.pathname}?document=${encodeURIComponent(activeDocumentId)}`);
           return;
         }
@@ -910,6 +1275,23 @@
       if (typeof documentData.name === 'string' && typeof documentData.html === 'string') {
         nameInput.value = documentData.name;
         editor.innerHTML = sanitizeDocumentHtml(documentData.html);
+        syncDocumentHeaderSpacing();
+        const pageCount = editor.querySelectorAll('.page-break').length + 1;
+        const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+        const restoredGuideAxes = new Set();
+        alignmentGuides = Array.isArray(documentData.alignmentGuides)
+          ? documentData.alignmentGuides.filter((guide) => {
+            if (!guide || !['x', 'y'].includes(guide.axis) || !Number.isInteger(guide.page) ||
+              guide.page < 0 || guide.page >= pageCount || !Number.isFinite(guide.position) ||
+              guide.position < 0 || restoredGuideAxes.has(guide.axis)) return false;
+            restoredGuideAxes.add(guide.axis);
+            return true;
+          }).map((guide) => ({
+            axis: guide.axis,
+            page: guide.page,
+            position: Math.min(guide.axis === 'x' ? editor.offsetWidth : pageHeight, guide.position)
+          }))
+          : [];
         pageBorderStyle = ['none', 'solid', 'thick', 'double', 'dashed', 'dotted'].includes(documentData.pageBorderStyle)
           ? documentData.pageBorderStyle
           : 'none';
@@ -918,6 +1300,7 @@
           : '#697586';
         applyPageBorder();
         document.getElementById('page-border-color-input').value = pageBorderColor;
+        renderAlignmentGuides();
         if (recoveredDraft) setSaveStatus('Recovered');
       } else {
         throw new Error('The saved document does not have a valid format.');
@@ -1170,6 +1553,21 @@
     } finally {
       applyingFontSize = false;
     }
+    const selection = window.getSelection();
+    const range = selection?.rangeCount && editor.contains(selection.anchorNode)
+      ? selection.getRangeAt(0)
+      : savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
+        ? savedEditorRange
+        : null;
+    const listItems = range
+      ? Array.from(editor.querySelectorAll('li')).filter((item) =>
+        range.collapsed ? item.contains(range.startContainer) : range.intersectsNode(item))
+      : [];
+    listItems.forEach((item) => { item.style.fontSize = `${size}px`; });
+    if (listItems.length) {
+      scheduleSave();
+      queueAutoPagination();
+    }
     return true;
   }
 
@@ -1296,11 +1694,43 @@
     phoneticShiftToggle.textContent = phoneticShiftActive ? 'Shift on' : 'Shift';
     updatePhoneticKeyLabels();
   });
-  const insertKeyboardOutput = (output) => {
+  const insertKeyboardOutput = (output, editableTarget = null) => {
+    const insertText = (text) => {
+      if (!editableTarget) {
+        document.execCommand('insertText', false, text);
+        return;
+      }
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = selection.rangeCount &&
+        editableTarget.contains(selection.anchorNode) &&
+        editableTarget.contains(selection.focusNode)
+        ? selection.getRangeAt(0)
+        : document.createRange();
+      if (!selection.rangeCount ||
+        !editableTarget.contains(selection.anchorNode) ||
+        !editableTarget.contains(selection.focusNode)) {
+        const label = editableTarget.querySelector('[data-shape-label="true"]') || editableTarget;
+        range.selectNodeContents(label);
+        range.collapse(false);
+      }
+      range.deleteContents();
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      editableTarget.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: text
+      }));
+    };
     if (output === '\u0654') {
       pendingHamza = false;
       pendingHamzaRange = null;
-      document.execCommand('insertText', false, '\u0621');
+      insertText('\u0621');
       const selection = window.getSelection();
       if (selection?.isCollapsed) {
         selection.modify('extend', 'backward', 'character');
@@ -1335,7 +1765,7 @@
         pendingHamza = false;
       }
     }
-    document.execCommand('insertText', false, output);
+    insertText(output);
   };
   document.querySelector('.keyboard-sidebar').addEventListener('pointerdown', rememberEditorSelection, true);
   document.querySelectorAll('[data-onscreen-key]').forEach((button) => {
@@ -1422,6 +1852,7 @@
     const currentRange = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
     if (command === 'italic' && currentRange && !currentRange.collapsed) {
       applyEnglishItalic(currentRange);
+      queueAutoPagination();
       return;
     }
     document.execCommand(command, false, value);
@@ -1430,24 +1861,47 @@
     }
     scheduleSave();
     updateCounts();
+    queueAutoPagination();
   }
 
   editor.addEventListener('input', () => {
     cleanPendingSizeMarkers();
     updateCounts();
     scheduleSave();
+    queueAutoPagination();
     updateWordSuggestions();
   });
   editor.addEventListener('keydown', (event) => {
-    const textBox = event.target instanceof Element ? event.target.closest('.editor-textbox') : null;
-    if (textBox && (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'a') {
+    const eventElement = event.target instanceof Element ? event.target : event.target.parentElement;
+    const selection = window.getSelection();
+    const selectionElement = selection?.anchorNode instanceof Element
+      ? selection.anchorNode
+      : selection?.anchorNode?.parentElement;
+    const documentRegion = eventElement?.closest('[data-document-region]') ||
+      selectionElement?.closest('[data-document-region]');
+    const textBox = eventElement?.closest('.editor-textbox') ||
+      selectionElement?.closest('.editor-textbox');
+    const editableShape = eventElement?.closest('.editor-shape[contenteditable="true"]') ||
+      selectionElement?.closest('.editor-shape[contenteditable="true"]');
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'a') {
       event.preventDefault();
       event.stopPropagation();
       const range = document.createRange();
-      range.selectNodeContents(textBox);
+      if (textBox || editableShape) {
+        range.selectNodeContents(textBox || editableShape);
+      } else if (documentRegion) {
+        range.selectNodeContents(documentRegion);
+      } else {
+        const bodyNodes = Array.from(editor.childNodes).filter((node) =>
+          !(node instanceof Element && node.matches('.document-header, .document-footer')));
+        if (!bodyNodes.length) return;
+        range.setStartBefore(bodyNodes[0]);
+        range.setEndAfter(bodyNodes[bodyNodes.length - 1]);
+      }
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
+      savedEditorRange = range.cloneRange();
       return;
     }
     if (!wordSuggestions.hidden) {
@@ -1495,7 +1949,7 @@
     const output = UrduKeyboardLayout.mapKey(event);
     if (output === event.key && !pendingHamza) return;
     event.preventDefault();
-    insertKeyboardOutput(output);
+    insertKeyboardOutput(output, editableShape);
   });
   editor.addEventListener('blur', hideWordSuggestions);
   editor.addEventListener('paste', (event) => {
@@ -1513,6 +1967,7 @@
   savedEditorRange.selectNodeContents(editor);
   savedEditorRange.collapse(false);
   updateCounts();
+  queueAutoPagination();
 
   document.querySelectorAll('[data-command]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1681,10 +2136,15 @@
     const selection = window.getSelection();
     if (!selection || !selection.rangeCount) return [editor.querySelector('p') || editor];
     const range = selection.getRangeAt(0);
+    const startElement = range.startContainer instanceof Element
+      ? range.startContainer
+      : range.startContainer.parentElement;
+    if (startElement?.closest('[data-document-region]')) return [];
     const blocks = new Set();
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_ELEMENT, {
       acceptNode(node) {
-        return /^(P|LI|H[1-6]|BLOCKQUOTE|DIV)$/.test(node.tagName) && range.intersectsNode(node)
+        return /^(P|LI|H[1-6]|BLOCKQUOTE|DIV)$/.test(node.tagName) &&
+          !node.closest('[data-document-region]') && range.intersectsNode(node)
           ? NodeFilter.FILTER_ACCEPT
           : NodeFilter.FILTER_SKIP;
       }
@@ -1698,6 +2158,7 @@
         ? range.startContainer
         : range.startContainer.parentElement;
       while (block && block !== editor && !/^(P|LI|H[1-6]|BLOCKQUOTE|DIV)$/.test(block.tagName)) block = block.parentElement;
+      if (block?.closest('[data-document-region]')) return [];
       blocks.add(block || editor);
     }
     return [...blocks];
@@ -1705,6 +2166,7 @@
   const applyParagraphSpacing = (value) => {
     selectedParagraphs().forEach((paragraph) => { paragraph.style.lineHeight = value; });
     scheduleSave();
+    queueAutoPagination();
   };
   document.querySelectorAll('[data-list-menu]').forEach((trigger) => {
     trigger.addEventListener('pointerdown', (event) => event.preventDefault());
@@ -1759,6 +2221,19 @@
     button.addEventListener('click', () => {
       const alignment = button.dataset.paragraphAlign;
       runCommand(alignment === 'justify' ? 'justifyFull' : `justify${alignment[0].toUpperCase()}${alignment.slice(1)}`);
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      if (range) {
+        editor.querySelectorAll('ul, ol').forEach((list) => {
+          if (!range.intersectsNode(list)) return;
+          list.style.direction = alignment === 'left' ? 'ltr' : 'rtl';
+          list.style.textAlign = alignment;
+          list.querySelectorAll(':scope > li').forEach((item) => {
+            item.style.direction = alignment === 'left' ? 'ltr' : 'rtl';
+            item.style.textAlign = alignment;
+          });
+        });
+      }
       document.querySelectorAll('[data-paragraph-align]').forEach((item) => item.classList.toggle('active', item === button));
     });
   });
@@ -1783,6 +2258,7 @@
           option.dataset.paragraphSpace === 'before' ? '12px' : '0px';
       });
       scheduleSave();
+      queueAutoPagination();
       closeParagraphMenus();
     });
   });
@@ -1795,6 +2271,23 @@
     }
     select.value = String(next);
     applyParagraphSpacing(String(next));
+  });
+  document.getElementById('apply-custom-line-spacing').addEventListener('click', () => {
+    const input = document.getElementById('custom-line-spacing');
+    const spacing = Number(input.value);
+    if (!Number.isFinite(spacing) || spacing < 0.5 || spacing > 10) {
+      showToast('Enter line spacing between 0.5 and 10.');
+      input.focus();
+      return;
+    }
+    const value = String(spacing);
+    const select = document.getElementById('line-spacing');
+    if (!Array.from(select.options).some((item) => item.value === value)) {
+      select.add(new Option(value, value));
+    }
+    select.value = value;
+    applyParagraphSpacing(value);
+    closeParagraphMenus();
   });
   document.addEventListener('click', (event) => {
     if (!event.target.closest('.paragraph-group') && !event.target.closest('.paragraph-menu')) closeParagraphMenus();
@@ -2591,6 +3084,7 @@
       region.style.textAlign = alignment;
       region.dataset.empty = 'false';
       region.dataset.pageNumberLocation = button.dataset.pageNumberLocation;
+      syncDocumentHeaderSpacing();
       region.dataset.pageNumberStyle = document.getElementById('page-number-style').value;
       const pageNumberSet = document.createElement('span');
       pageNumberSet.dataset.pageNumberSet = 'true';
@@ -2629,6 +3123,7 @@
       region.setAttribute('contenteditable', 'true');
       region.dataset.empty = String(!region.textContent.trim());
     });
+    syncDocumentHeaderSpacing();
     editor.style.page = '';
     closeInsertMenus();
     updateCounts();
@@ -2721,7 +3216,7 @@
       region.dataset.documentRegion = name;
       region.dataset.empty = 'true';
       region.setAttribute('dir', 'ltr');
-      region.setAttribute('contenteditable', 'true');
+      region.setAttribute('contenteditable', 'false');
       region.style.textAlign = alignment;
       const paragraph = document.createElement('p');
       paragraph.append(document.createElement('br'));
@@ -2731,6 +3226,7 @@
     } else {
       region.style.textAlign = alignment;
     }
+    syncDocumentHeaderSpacing();
     return region;
   }
   function focusDocumentRegion(region) {
@@ -2745,11 +3241,33 @@
     savedEditorRange = range.cloneRange();
   }
   document.getElementById('header-insert-button').addEventListener('click', () => {
-    focusDocumentRegion(ensureDocumentRegion('header'));
+    ensureDocumentRegion('header').scrollIntoView({ behavior: 'smooth', block: 'center' });
     scheduleSave();
   });
   document.getElementById('footer-insert-button').addEventListener('click', () => {
-    focusDocumentRegion(ensureDocumentRegion('footer'));
+    ensureDocumentRegion('footer').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    scheduleSave();
+  });
+  editor.addEventListener('dblclick', (event) => {
+    const region = event.target.closest('[data-document-region]');
+    if (!region || !editor.contains(region)) return;
+    region.setAttribute('contenteditable', 'true');
+    const paragraph = region.querySelector('p') || region;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    savedEditorRange = range.cloneRange();
+    region.focus();
+    event.preventDefault();
+  });
+  editor.addEventListener('focusout', (event) => {
+    const region = event.target.closest('[data-document-region]');
+    if (!region || region.contains(event.relatedTarget)) return;
+    region.setAttribute('contenteditable', 'false');
+    region.dataset.empty = String(!region.textContent.trim());
     scheduleSave();
   });
   editor.addEventListener('input', () => {
@@ -2881,28 +3399,50 @@
     imageToolbar.style.top = `${top}px`;
   };
   let activeWatermark = null;
-  let watermarkDrag = null;
   let watermarkResizeDrag = null;
+  let watermarkRotateDrag = null;
+  const getWatermarkHandlePoint = (watermark, x, y) => {
+    const bounds = watermark.getBoundingClientRect();
+    const angle = (Number(watermark.dataset.watermarkRotation) || 0) * Math.PI / 180;
+    return {
+      left: (bounds.left + bounds.right) / 2 + x * Math.cos(angle) - y * Math.sin(angle),
+      top: (bounds.top + bounds.bottom) / 2 + x * Math.sin(angle) + y * Math.cos(angle)
+    };
+  };
   const refreshWatermarkManipulators = (watermark) => {
     watermarkManipulators.replaceChildren();
     watermarkManipulators.hidden = !watermark || !editor.contains(watermark);
     if (watermarkManipulators.hidden) return;
-    const bounds = watermark.getBoundingClientRect();
+    const scaleX = editor.getBoundingClientRect().width / Math.max(editor.offsetWidth, 1);
+    const scaleY = editor.getBoundingClientRect().height / Math.max(editor.offsetHeight, 1);
+    const width = watermark.offsetWidth * scaleX;
+    const height = watermark.offsetHeight * scaleY;
     [
-      ['nw', bounds.left, bounds.top, 'top-left'],
-      ['ne', bounds.right, bounds.top, 'top-right'],
-      ['sw', bounds.left, bounds.bottom, 'bottom-left'],
-      ['se', bounds.right, bounds.bottom, 'bottom-right']
-    ].forEach(([corner, left, top, label]) => {
+      ['nw', -width / 2, -height / 2, 'top-left'],
+      ['ne', width / 2, -height / 2, 'top-right'],
+      ['sw', -width / 2, height / 2, 'bottom-left'],
+      ['se', width / 2, height / 2, 'bottom-right']
+    ].forEach(([corner, x, y, label]) => {
       const handle = document.createElement('button');
       handle.type = 'button';
       handle.className = `image-resize-handle image-resize-${corner}`;
       handle.dataset.watermarkResizeCorner = corner;
       handle.setAttribute('aria-label', `Resize watermark from ${label}`);
-      handle.style.left = `${left}px`;
-      handle.style.top = `${top}px`;
+      const point = getWatermarkHandlePoint(watermark, x, y);
+      handle.style.left = `${point.left}px`;
+      handle.style.top = `${point.top}px`;
       watermarkManipulators.append(handle);
     });
+    const rotateHandle = document.createElement('button');
+    rotateHandle.type = 'button';
+    rotateHandle.className = 'image-rotate-handle';
+    rotateHandle.dataset.watermarkRotateHandle = 'true';
+    rotateHandle.setAttribute('aria-label', 'Rotate watermark');
+    rotateHandle.textContent = '↻';
+    const rotatePoint = getWatermarkHandlePoint(watermark, 0, -height / 2 - 28);
+    rotateHandle.style.left = `${rotatePoint.left}px`;
+    rotateHandle.style.top = `${rotatePoint.top}px`;
+    watermarkManipulators.append(rotateHandle);
   };
   const getWatermarkDirection = (text) => /[\u0590-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/u.test(text) ? 'rtl' : 'ltr';
   const showWatermarkToolbar = (watermark) => {
@@ -2934,6 +3474,9 @@
     applyWatermarkTextDirection(watermarkEditTextInput, getWatermarkDirection(watermark.textContent));
     document.getElementById('watermark-edit-opacity').value = String(opacity);
     document.getElementById('watermark-edit-opacity-value').value = `${opacity}%`;
+    const rotation = Number(watermark.dataset.watermarkRotation) || 0;
+    document.getElementById('watermark-edit-rotation').value = String(rotation);
+    document.getElementById('watermark-edit-rotation-value').value = `${rotation}°`;
     const width = watermark.matches('img') ? Number(watermark.getAttribute('width')) || watermark.width : 240;
     document.getElementById('watermark-edit-width').value = String(Math.max(40, Math.min(2000, width)));
     document.getElementById('watermark-edit-width-value').value = `${width}px`;
@@ -2958,12 +3501,21 @@
     }
     watermark.dataset.watermark = type;
     watermark.dataset.watermarkOpacity = (opacity / 100).toFixed(2);
+    watermark.dataset.watermarkRotation = '0';
     watermark.contentEditable = 'false';
     watermark.style.position = 'absolute';
+    watermark.style.transformOrigin = 'center';
     watermark.style.opacity = watermark.dataset.watermarkOpacity;
-    watermark.style.left = `${Math.max(0, (editor.offsetWidth - (type === 'image' ? watermark.width : 240)) / 2)}px`;
-    watermark.style.top = `${Math.max(0, editor.offsetHeight / 2 - 50)}px`;
     editor.append(watermark);
+    const centerWatermark = () => {
+      watermark.style.left = `${Math.max(0, (editor.offsetWidth - watermark.offsetWidth) / 2)}px`;
+      watermark.style.top = `${Math.max(0, (editor.offsetHeight - watermark.offsetHeight) / 2)}px`;
+      refreshWatermarkManipulators(watermark);
+    };
+    if (watermark instanceof HTMLImageElement && !watermark.complete) {
+      watermark.addEventListener('load', centerWatermark, { once: true });
+    }
+    centerWatermark();
     showWatermarkToolbar(watermark);
     scheduleSave();
     return watermark;
@@ -3001,6 +3553,7 @@
     watermarkPreviewText.style.opacity = opacity;
     watermarkPreviewImage.style.opacity = opacity;
   };
+  enableUrduTyping(document.getElementById('shape-text'));
   enableUrduTyping(watermarkTextInput);
   enableUrduTyping(watermarkEditTextInput);
   document.querySelectorAll('input[name="watermark-kind"]').forEach((input) => {
@@ -3070,28 +3623,23 @@
     reader.addEventListener('error', () => window.alert('Could not read the watermark image.'));
     reader.readAsDataURL(file);
   });
-  editor.addEventListener('pointerdown', (event) => {
-    const watermark = event.target.closest('[data-watermark]');
-    if (event.button !== 0 || !watermark || !editor.contains(watermark)) return;
-    event.preventDefault();
-    showWatermarkToolbar(watermark);
-    const pageBounds = editor.getBoundingClientRect();
-    const watermarkBounds = watermark.getBoundingClientRect();
-    const scaleX = pageBounds.width / editor.offsetWidth;
-    const scaleY = pageBounds.height / editor.offsetHeight;
-    watermarkDrag = {
-      watermark,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      left: (watermarkBounds.left - pageBounds.left) / scaleX,
-      top: (watermarkBounds.top - pageBounds.top) / scaleY,
-      scaleX,
-      scaleY,
-      moved: false
-    };
-  });
   watermarkManipulators.addEventListener('pointerdown', (event) => {
+    const rotateHandle = event.target.closest('[data-watermark-rotate-handle]');
+    if (rotateHandle && activeWatermark && editor.contains(activeWatermark)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = activeWatermark.getBoundingClientRect();
+      watermarkRotateDrag = {
+        watermark: activeWatermark,
+        pointerId: event.pointerId,
+        centerX: (bounds.left + bounds.right) / 2,
+        centerY: (bounds.top + bounds.bottom) / 2,
+        lastPointerAngle: Math.atan2(event.clientY - (bounds.top + bounds.bottom) / 2,
+          event.clientX - (bounds.left + bounds.right) / 2) * 180 / Math.PI,
+        rotation: Number(activeWatermark.dataset.watermarkRotation) || 0
+      };
+      return;
+    }
     const handle = event.target.closest('[data-watermark-resize-corner]');
     if (!handle || !activeWatermark || !editor.contains(activeWatermark)) return;
     event.preventDefault();
@@ -3100,8 +3648,8 @@
     const bounds = activeWatermark.getBoundingClientRect();
     const scaleX = pageBounds.width / editor.offsetWidth;
     const scaleY = pageBounds.height / editor.offsetHeight;
-    const width = bounds.width / scaleX;
-    const height = bounds.height / scaleY;
+    const width = activeWatermark.offsetWidth;
+    const height = activeWatermark.offsetHeight;
     const fontSize = Number.parseFloat(getComputedStyle(activeWatermark).fontSize);
     watermarkResizeDrag = {
       watermark: activeWatermark,
@@ -3109,52 +3657,51 @@
       corner: handle.dataset.watermarkResizeCorner,
       startX: event.clientX,
       startY: event.clientY,
-      left: (bounds.left - pageBounds.left) / scaleX,
-      top: (bounds.top - pageBounds.top) / scaleY,
-      width,
-      height,
-      aspect: width / height,
+      left: activeWatermark.offsetLeft,
+      top: activeWatermark.offsetTop,
+      width: activeWatermark.offsetWidth,
+      height: activeWatermark.offsetHeight,
+      aspect: width / Math.max(height, 1),
+      rotation: (Number(activeWatermark.dataset.watermarkRotation) || 0) * Math.PI / 180,
       fontSize,
       scaleX,
       scaleY,
       pageWidth: editor.offsetWidth,
       pageHeight: editor.offsetHeight,
-      minWidth: activeWatermark.matches('img') ? 40 : width * 12 / fontSize
+      minWidth: activeWatermark.matches('img') ? 40 : width * 12 / Math.max(fontSize, 1)
     };
   });
   document.addEventListener('pointermove', (event) => {
-    if (watermarkDrag && watermarkDrag.pointerId === event.pointerId) {
-      const drag = watermarkDrag;
-      const dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
-      if (!drag.moved && Math.hypot(dx, dy) < 3) return;
-      drag.moved = true;
-      event.preventDefault();
-      const bounds = drag.watermark.getBoundingClientRect();
-      drag.watermark.style.left = `${Math.max(0, Math.min(editor.offsetWidth - bounds.width / drag.scaleX,
-        drag.left + dx / drag.scaleX))}px`;
-      drag.watermark.style.top = `${Math.max(0, Math.min(editor.offsetHeight - bounds.height / drag.scaleY,
-        drag.top + dy / drag.scaleY))}px`;
+    if (watermarkRotateDrag && watermarkRotateDrag.pointerId === event.pointerId) {
+      const drag = watermarkRotateDrag;
+      const angle = Math.atan2(event.clientY - drag.centerY, event.clientX - drag.centerX) * 180 / Math.PI;
+      let delta = angle - drag.lastPointerAngle;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      drag.rotation = (Math.round(drag.rotation + delta) % 360 + 360) % 360;
+      drag.lastPointerAngle = angle;
+      drag.watermark.dataset.watermarkRotation = String(drag.rotation);
+      drag.watermark.style.rotate = `${drag.rotation}deg`;
+      document.getElementById('watermark-edit-rotation').value = String(drag.rotation);
+      document.getElementById('watermark-edit-rotation-value').value = `${drag.rotation}°`;
       refreshWatermarkManipulators(drag.watermark);
-      positionContextToolbar(watermarkToolbar, drag.watermark.getBoundingClientRect());
+      event.preventDefault();
       return;
     }
     if (!watermarkResizeDrag || watermarkResizeDrag.pointerId !== event.pointerId) return;
     const drag = watermarkResizeDrag;
     const signX = drag.corner.endsWith('e') ? 1 : -1;
     const signY = drag.corner.startsWith('s') ? 1 : -1;
-    const dx = (event.clientX - drag.startX) / drag.scaleX * signX;
-    const dy = (event.clientY - drag.startY) / drag.scaleY * signY;
+    const pointerX = event.clientX - drag.startX;
+    const pointerY = event.clientY - drag.startY;
+    const dx = (pointerX * Math.cos(drag.rotation) + pointerY * Math.sin(drag.rotation)) /
+      drag.scaleX * signX;
+    const dy = (-pointerX * Math.sin(drag.rotation) + pointerY * Math.cos(drag.rotation)) /
+      drag.scaleY * signY;
     const widthChange = (dx + dy / drag.aspect) / (1 + 1 / (drag.aspect * drag.aspect));
-    const isWest = drag.corner.endsWith('w');
-    const isNorth = drag.corner.startsWith('n');
-    const maxWidth = Math.min(2000,
-      isWest ? drag.left + drag.width : drag.pageWidth - drag.left,
-      (isNorth ? drag.top + drag.height : drag.pageHeight - drag.top) * drag.aspect);
+    const maxWidth = Math.min(2000, drag.pageWidth * 0.9, drag.pageHeight * 0.9 * drag.aspect);
     const width = Math.max(Math.min(drag.minWidth, maxWidth),
       Math.min(maxWidth, drag.width + widthChange));
-    const left = isWest ? drag.left + drag.width - width : drag.left;
-    const top = isNorth ? drag.top + drag.height - width / drag.aspect : drag.top;
     if (drag.watermark.matches('img')) {
       drag.watermark.width = Math.round(width);
       document.getElementById('watermark-edit-width').value = String(Math.round(width));
@@ -3162,16 +3709,16 @@
     } else {
       drag.watermark.style.fontSize = `${(Math.round(drag.fontSize * width / drag.width * 100) / 100)}px`;
     }
-    drag.watermark.style.left = `${Math.max(0, left)}px`;
-    drag.watermark.style.top = `${Math.max(0, top)}px`;
+    drag.watermark.style.left = `${Math.max(0, (drag.pageWidth - drag.watermark.offsetWidth) / 2)}px`;
+    drag.watermark.style.top = `${Math.max(0, (drag.pageHeight - drag.watermark.offsetHeight) / 2)}px`;
     refreshWatermarkManipulators(drag.watermark);
     positionContextToolbar(watermarkToolbar, drag.watermark.getBoundingClientRect());
     event.preventDefault();
   });
   const finishWatermarkDrag = (event) => {
-    if (watermarkDrag && watermarkDrag.pointerId === event.pointerId) {
-      if (watermarkDrag.moved) scheduleSave();
-      watermarkDrag = null;
+    if (watermarkRotateDrag && watermarkRotateDrag.pointerId === event.pointerId) {
+      watermarkRotateDrag = null;
+      scheduleSave();
     }
     if (watermarkResizeDrag && watermarkResizeDrag.pointerId === event.pointerId) {
       watermarkResizeDrag = null;
@@ -3201,9 +3748,20 @@
   document.getElementById('watermark-edit-width').addEventListener('input', (event) => {
     if (!activeWatermark || !activeWatermark.matches('img')) return;
     activeWatermark.width = Number(event.currentTarget.value);
+    activeWatermark.style.left = `${Math.max(0, (editor.offsetWidth - activeWatermark.offsetWidth) / 2)}px`;
+    activeWatermark.style.top = `${Math.max(0, (editor.offsetHeight - activeWatermark.offsetHeight) / 2)}px`;
     document.getElementById('watermark-edit-width-value').value = `${event.currentTarget.value}px`;
     refreshWatermarkManipulators(activeWatermark);
     positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
+    scheduleSave();
+  });
+  document.getElementById('watermark-edit-rotation').addEventListener('input', (event) => {
+    if (!activeWatermark || !editor.contains(activeWatermark)) return;
+    const rotation = Number(event.currentTarget.value);
+    activeWatermark.dataset.watermarkRotation = String(rotation);
+    activeWatermark.style.rotate = `${rotation}deg`;
+    document.getElementById('watermark-edit-rotation-value').value = `${rotation}°`;
+    refreshWatermarkManipulators(activeWatermark);
     scheduleSave();
   });
   const removeSelectedWatermark = () => {
@@ -4145,6 +4703,27 @@
   });
   editor.addEventListener('dblclick', (event) => {
     if (event.button !== 0) return;
+    const shape = event.target.closest('.editor-shape:not(.editor-textbox)');
+    if (shape && editor.contains(shape)) {
+      showShapeToolbar(shape);
+      let label = shape.querySelector('[data-shape-label="true"]');
+      if (!label) {
+        label = document.createElement('span');
+        label.dataset.shapeLabel = 'true';
+        shape.append(label);
+      }
+      shape.setAttribute('contenteditable', 'true');
+      shape.setAttribute('tabindex', '0');
+      shape.focus();
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      event.preventDefault();
+      return;
+    }
     const table = event.target.closest('table');
     if (!table || !editor.contains(table)) return;
     const cell = event.target.closest('td, th') || table.querySelector('td, th');
@@ -4152,6 +4731,23 @@
     updateTableToolbar(cell);
     tableLayoutTab.hidden = false;
     activateRibbonTab(tableLayoutTab);
+  });
+  editor.addEventListener('focusout', (event) => {
+    const shape = event.target.closest('.editor-shape:not(.editor-textbox)');
+    if (!shape || shape.contains(event.relatedTarget) || shape.getAttribute('contenteditable') !== 'true') return;
+    const selection = window.getSelection();
+    if (selection?.anchorNode && shape.contains(selection.anchorNode)) return;
+    shape.setAttribute('contenteditable', 'false');
+    shape.removeAttribute('tabindex');
+    scheduleSave();
+  });
+  editor.addEventListener('pointerdown', (event) => {
+    const shape = activeShape;
+    if (!shape || shape.getAttribute('contenteditable') !== 'true' || shape.contains(event.target) ||
+      shapeToolbar.contains(event.target) || shapeManipulators.contains(event.target)) return;
+    shape.setAttribute('contenteditable', 'false');
+    shape.removeAttribute('tabindex');
+    scheduleSave();
   });
   editor.addEventListener('pointerover', (event) => {
     const table = event.target.closest('table');
@@ -4196,12 +4792,22 @@
       setSelectedObject(null);
       return;
     }
-    const current = Number(selectedObject.dataset.layer || 0);
+    changeElementLayer(selectedObject, amount);
+  };
+  const changeElementLayer = (element, amount) => {
+    if (!element || !editor.contains(element)) return;
+    const current = Number(element.dataset.layer || 0);
     const next = Math.max(-10, Math.min(10, current + amount));
-    selectedObject.dataset.layer = String(next);
-    selectedObject.style.zIndex = String(next);
+    element.dataset.layer = String(next);
+    element.style.zIndex = String(next);
     scheduleSave();
   };
+  document.querySelectorAll('[data-object-layer]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const object = button.closest('#image-context-toolbar') ? activeImage : activeShape;
+      changeElementLayer(object, Number(button.dataset.objectLayer));
+    });
+  });
   document.getElementById('bring-forward').addEventListener('click', () => changeObjectLayer(1));
   document.getElementById('send-backward').addEventListener('click', () => changeObjectLayer(-1));
   const makeTableGrip = (kind, index, className, label) => {
@@ -5460,6 +6066,19 @@
     event.currentTarget.setAttribute('aria-pressed', String(visible));
     event.currentTarget.querySelector('span:last-child').textContent = visible ? 'Ruler' : 'Show ruler';
   });
+  document.querySelectorAll('[data-guide-add]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const axis = button.dataset.guideAdd;
+      const existingIndex = alignmentGuides.findIndex((guide) => guide.axis === axis);
+      if (existingIndex >= 0) {
+        removeAlignmentGuide(existingIndex);
+        return;
+      }
+      const page = Math.max(0, Number(verticalRuler.dataset.pageIndex) || 0);
+      const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
+      addAlignmentGuide(axis, page, axis === 'x' ? editor.offsetWidth / 2 : pageHeight / 2);
+    });
+  });
   [
     { id: 'header-toggle', className: 'header-collapsed', name: 'top bar' },
     { id: 'tools-toggle', className: 'tools-collapsed', name: 'tools bar' }
@@ -5562,6 +6181,7 @@
       ? `@page { size: ${width}px ${height}px; }`
       : `@page { size: ${pageSize} ${landscape ? 'landscape' : 'portrait'}; }`;
     syncRulers();
+    queueAutoPagination();
   };
   const closeLayoutMenu = (id) => {
     const entry = layoutMenus.find(({ menu }) => menu.id === id);
@@ -5636,8 +6256,10 @@
     editor.style.setProperty('--document-margin-bottom', `${bottom * 96}px`);
     editor.style.setProperty('--document-margin-left', `${left * 96}px`);
     editor.style.setProperty('--document-margin-right', `${right * 96}px`);
+    syncDocumentHeaderSpacing();
     marginFields.forEach((field, index) => { field.value = String(values[index]); });
     syncRulers();
+    queueAutoPagination();
     showMarginGuides(values);
   };
   const marginPresets = {
@@ -5823,7 +6445,8 @@
   };
   const updateExportButtonLabel = () => {
     const format = exportFormat.value;
-    exportDownloadAction.textContent = `Download ${format === 'pdf' ? 'PDF' : 'PNG image'}`;
+    const names = { pdf: 'PDF', png: 'PNG image' };
+    exportDownloadAction.textContent = `Download ${names[format] || 'file'}`;
     pdfExportHelp.hidden = format !== 'pdf';
   };
   const positionDownloadPanel = () => {
@@ -5918,7 +6541,7 @@
     const externalImage = Array.from(editor.querySelectorAll('img')).find((image) =>
       image.currentSrc && !image.currentSrc.startsWith('data:') &&
       new URL(image.currentSrc, document.baseURI).origin !== window.location.origin);
-    if (externalImage) throw new Error('Download external images before exporting the document as a PNG or PDF.');
+    if (externalImage) throw new Error('Download external images before exporting the document as PNG or PDF.');
     const height = pageHeight * pages.length;
     const requestedScale = exportPreset === 'print' ? 2 : 1;
     const scale = Math.min(requestedScale, 8192 / width, 8192 / height, Math.sqrt(64000000 / (width * height)));

@@ -38,7 +38,7 @@
         <option value="pdf">PDF</option>
         <option value="png">PNG image</option>
       </select>
-      <p id="pdf-export-help" class="pdf-export-help">Your PDF will download directly to your device.</p>
+      <p id="pdf-export-help" class="pdf-export-help">PDF downloads are image-based.</p>
       <fieldset class="export-preset">
         <legend>Presets</legend>
         <div class="export-preset-options">
@@ -176,13 +176,15 @@
         <div class="paragraph-menu spacing-menu" id="spacing-menu" role="listbox" aria-label="Line spacing options" hidden>
           <strong>Line Spacing</strong>
           <button type="button" data-line-spacing="1">1.0</button><button type="button" data-line-spacing="1.15">1.15</button><button type="button" data-line-spacing="1.5">1.5</button><button type="button" data-line-spacing="2">2.0</button><button type="button" data-line-spacing="2.5">2.5</button><button type="button" data-line-spacing="3">3.0</button>
+          <label class="custom-line-spacing">Custom <input id="custom-line-spacing" type="number" min="0.5" max="10" step="0.1" value="1.8" aria-label="Custom line spacing"></label>
+          <button type="button" id="apply-custom-line-spacing">Apply custom spacing</button>
           <div class="menu-separator"></div>
           <button type="button" data-paragraph-space="before">↕ <span>Add Space Before Paragraph</span></button>
           <button type="button" data-paragraph-space="after">↕ <span>Remove Space After Paragraph</span></button>
         </div>
       </div>
       <div class="ribbon-group editing-group"><button class="ribbon-action" id="find-button" type="button"><img src="assets/Media/find-search-secure-svgrepo-com.svg" alt=""><span>Find</span></button><button class="ribbon-action" id="replace-button" type="button"><img src="assets/Media/search-and-replace-svgrepo-com.svg" alt=""><span>Replace</span></button><span class="group-caption">Editing</span></div>
-      <div class="ribbon-group arrange-group" aria-label="Selection and arrange">
+      <div class="ribbon-group arrange-group" aria-label="Selection and arrange" hidden>
         <button class="ribbon-action" id="select-objects-toggle" type="button" aria-pressed="false" title="Select text, tables, and pictures as objects"><img src="assets/Media/select-svgrepo-com.svg" alt=""><span>Select objects</span></button>
         <button class="ribbon-action" id="bring-forward" type="button" disabled title="Bring selected object forward"><img src="assets/Media/bring-forward-svgrepo-com.svg" alt=""><span>Bring forward</span></button>
         <button class="ribbon-action" id="send-backward" type="button" disabled title="Send selected object backward"><img class="send-backward-icon" src="assets/Media/bring-forward-svgrepo-com.svg" alt=""><span>Send backward</span></button>
@@ -378,6 +380,11 @@
         <span class="group-caption">Ruler</span>
       </div>
       <div class="ribbon-group view-ribbon-group">
+        <button class="view-action" type="button" data-guide-add="x" aria-pressed="false" title="Add a vertical blue alignment guide"><span class="view-glyph">↕</span><span>Add vertical guide</span></button>
+        <button class="view-action" type="button" data-guide-add="y" aria-pressed="false" title="Add a horizontal blue alignment guide"><span class="view-glyph">↔</span><span>Add horizontal guide</span></button>
+        <span class="group-caption">Alignment guides</span>
+      </div>
+      <div class="ribbon-group view-ribbon-group">
         <button id="theme-toggle" class="view-action" type="button" aria-pressed="false"><span class="view-glyph">◐</span><span>Dark mode</span></button>
         <span class="group-caption">Theme</span>
       </div>
@@ -511,6 +518,7 @@
       <div class="document-stage">
         <div class="page-frame">
           <article id="editor" class="paper" contenteditable="true" role="textbox" aria-label="Urdu document. Type with the English keyboard to enter Urdu letters immediately." aria-multiline="true" aria-autocomplete="list" aria-controls="word-suggestions" spellcheck="true" dir="rtl" lang="ur"><p><br></p></article>
+          <div id="alignment-guides" class="alignment-guides" aria-label="Alignment guides"></div>
           <div id="margin-guides" class="margin-guides" aria-hidden="true" hidden></div>
           <div class="add-page-control"><button id="add-page-button" type="button">＋ Add new page</button></div>
           <div class="page-actions" aria-label="Current page actions">
@@ -591,6 +599,10 @@
   <div id="shape-manipulators" class="image-manipulators shape-manipulators" aria-label="Shape resize controls" hidden></div>
   <div id="shape-context-toolbar" class="context-toolbar shape-context-toolbar" role="toolbar" aria-label="Shape formatting" hidden>
     <strong>Shape</strong>
+    <div class="image-action-row object-layer-actions" role="group" aria-label="Shape layer order">
+      <button type="button" data-object-layer="1">Bring forward</button>
+      <button type="button" data-object-layer="-1">Send backward</button>
+    </div>
     <div class="shape-toolbar-row shape-toolbar-fill-row">
       <label>Fill <input id="shape-fill-color" type="color" value="#dce8f5" aria-label="Shape fill color"></label>
       <button id="shape-delete" class="image-icon-button image-delete-action" type="button" aria-label="Delete shape" title="Delete shape">
@@ -609,6 +621,10 @@
   <div id="watermark-manipulators" class="image-manipulators" aria-label="Watermark resize controls" hidden></div>
   <div id="image-context-toolbar" class="context-toolbar image-context-toolbar" role="toolbar" aria-label="Picture formatting" hidden>
     <strong>Picture</strong>
+    <div class="image-action-row object-layer-actions" role="group" aria-label="Picture layer order">
+      <button type="button" data-object-layer="1">Bring forward</button>
+      <button type="button" data-object-layer="-1">Send backward</button>
+    </div>
     <div class="image-action-row" role="group" aria-label="Crop and delete picture">
       <button id="image-crop-toggle" class="image-icon-button" type="button" aria-pressed="false" title="Crop picture" aria-label="Crop picture">
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 2v12a2 2 0 0 0 2 2h10M2 6h12a2 2 0 0 1 2 2v10M8 8h4v4"/></svg>
@@ -664,6 +680,7 @@
     <label id="watermark-edit-text-field">Text <input id="watermark-edit-text" type="text" maxlength="80"></label>
     <label>Opacity <input id="watermark-edit-opacity" type="range" min="5" max="100" step="5" value="25"><output id="watermark-edit-opacity-value">25%</output></label>
     <label id="watermark-edit-width-field">Width <input id="watermark-edit-width" type="range" min="40" max="2000" step="10" value="240"><output id="watermark-edit-width-value">240 px</output></label>
+    <label>Rotation <input id="watermark-edit-rotation" type="range" min="0" max="359" step="1" value="0"><output id="watermark-edit-rotation-value">0°</output></label>
     <button id="watermark-delete" type="button">Delete watermark</button>
   </div>
   <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
