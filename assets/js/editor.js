@@ -6341,10 +6341,29 @@
   });
   const activateRibbonTab = (button) => {
     const homeSelected = button.dataset.tab === 'home';
+    const keyboardSelected = button.dataset.tab === 'keyboard';
+    const isMobileEditor = window.matchMedia('(max-width: 760px)').matches;
     document.body.classList.toggle('home-ribbon-active', homeSelected);
     document.querySelector('.ribbon-shell').classList.toggle('home-ribbon', homeSelected);
     closeLayoutMenus();
     if (button !== tableLayoutTab) tableLayoutTab.hidden = true;
+    if (isMobileEditor) {
+      document.body.classList.add('mobile-tools-open');
+      document.body.classList.toggle('mobile-keyboard-active', keyboardSelected);
+      if (keyboardSelected) {
+        onscreenKeyboard.hidden = false;
+        keyboardToggle.setAttribute('aria-expanded', 'true');
+        keyboardToggle.closest('.keyboard-sidebar').classList.add('keyboard-open');
+        document.body.classList.add('landscape-keyboard-open');
+      } else {
+        onscreenKeyboard.hidden = true;
+        keyboardToggle.setAttribute('aria-expanded', 'false');
+        keyboardToggle.closest('.keyboard-sidebar').classList.remove('keyboard-open');
+        document.body.classList.remove('landscape-keyboard-open');
+      }
+    } else {
+      document.body.classList.remove('mobile-keyboard-active', 'mobile-tools-open');
+    }
     document.querySelectorAll('.tab-button').forEach((tab) => tab.classList.toggle('active', tab === button));
     document.querySelectorAll('.ribbon-panel').forEach((panel) => {
       panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab);
@@ -6352,6 +6371,30 @@
   };
   document.querySelectorAll('.tab-button').forEach((button) => {
     button.addEventListener('click', () => activateRibbonTab(button));
+  });
+  const mobileEditorQuery = window.matchMedia('(max-width: 760px)');
+  if (mobileEditorQuery.matches) document.body.classList.add('mobile-tools-open');
+  mobileEditorQuery.addEventListener('change', (event) => {
+    if (event.matches) {
+      document.body.classList.add('mobile-tools-open');
+      if (document.getElementById('mobile-keyboard-tab').classList.contains('active')) {
+        onscreenKeyboard.hidden = false;
+        keyboardToggle.setAttribute('aria-expanded', 'true');
+        keyboardToggle.closest('.keyboard-sidebar').classList.add('keyboard-open');
+        document.body.classList.add('mobile-keyboard-active', 'landscape-keyboard-open');
+      }
+      return;
+    }
+    if (document.body.classList.contains('mobile-keyboard-active')) {
+      onscreenKeyboard.hidden = true;
+      keyboardToggle.setAttribute('aria-expanded', 'false');
+      keyboardToggle.closest('.keyboard-sidebar').classList.remove('keyboard-open');
+      document.body.classList.remove('landscape-keyboard-open');
+    }
+    document.body.classList.remove('mobile-tools-open', 'mobile-keyboard-active');
+    if (document.getElementById('mobile-keyboard-tab').classList.contains('active')) {
+      document.querySelector('.tab-button[data-tab="home"]').click();
+    }
   });
   const layoutMenus = Array.from(document.querySelectorAll('.layout-menu-trigger')).map((button) => ({
     button,

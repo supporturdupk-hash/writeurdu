@@ -22,6 +22,9 @@
       <span class="save-status" id="save-status" role="status" title="Saved on this device">Saved</span>
     </div>
     <div class="header-actions">
+      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu keyboard mapping" aria-pressed="true" title="Toggle Urdu keyboard mapping">
+        <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
+      </button>
       <button class="header-button download-action" id="download-button" type="button" aria-label="Open document download options" aria-expanded="false" aria-controls="download-panel">
         <img src="assets/Media/download-svgrepo-com.svg" alt=""><span>Download</span>
       </button>
@@ -74,18 +77,16 @@
 
   <nav class="tab-row" aria-label="Document tabs" dir="ltr">
     <button class="app-launcher" type="button" aria-label="All tools">⠿</button>
-    <button class="tab-button active" type="button" data-tab="home">Home</button>
-    <button class="tab-button" type="button" data-tab="insert">Insert</button>
-    <button class="tab-button" type="button" data-tab="layout">Layout</button>
-    <button class="tab-button" type="button" data-tab="view">View</button>
-    <button class="tab-button" type="button" data-tab="help">Help</button>
+    <button class="tab-button active" type="button" data-tab="home"><span class="mobile-tab-icon" aria-hidden="true">⌂</span><span class="tab-label">Home</span></button>
+    <button class="tab-button" type="button" data-tab="insert"><span class="mobile-tab-icon" aria-hidden="true">＋</span><span class="tab-label">Insert</span></button>
+    <button class="tab-button" type="button" data-tab="layout"><span class="mobile-tab-icon" aria-hidden="true">▦</span><span class="tab-label">Layout</span></button>
+    <button class="tab-button" type="button" data-tab="view"><span class="mobile-tab-icon" aria-hidden="true">◐</span><span class="tab-label">View</span></button>
+    <button id="mobile-keyboard-tab" class="tab-button mobile-keyboard-tab" type="button" data-tab="keyboard" aria-controls="onscreen-keyboard"><span class="mobile-tab-icon" aria-hidden="true">⌨</span><span class="tab-label">Keyboard</span></button>
+    <button class="tab-button" type="button" data-tab="help"><span class="mobile-tab-icon" aria-hidden="true">?</span><span class="tab-label">Help</span></button>
     <button id="table-layout-tab" class="tab-button" type="button" data-tab="table-layout" hidden>Table Layout</button>
     <span class="tab-spacer"></span>
     <div class="tab-actions">
       <button id="typing-help-button" class="help-button" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
-      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu keyboard mapping" aria-pressed="true" title="Toggle Urdu keyboard mapping">
-        <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
-      </button>
       <button id="focus-toggle" class="header-button focus-action" type="button" aria-haspopup="dialog">▣ <span>Preview</span></button>
       <button id="header-toggle" class="bar-toggle header-toggle" type="button" aria-label="Hide top bar" aria-expanded="true" title="Hide top bar">
         <img src="assets/Media/down-arrow-5-svgrepo-com.svg" alt="">

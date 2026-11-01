@@ -246,18 +246,27 @@
         menu.className = 'file-menu';
         menu.hidden = true;
         menu.setAttribute('role', 'menu');
-        [
-          ['Open', 'open'],
-          ['Download', 'download'],
-          ['Print', 'print'],
-          ['Delete', 'delete']
-        ].forEach(([label, action]) => {
+        const fileMenuActions = [
+          ['Open', 'open', 'M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3m-2-12v5h5M9 12h10m-4-4 4 4-4 4'],
+          ['Download', 'download', 'M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3'],
+          ['Print', 'print', 'M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-4a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v4a2 2 0 0 1-2 2h-2m-10-3h10v7H7z'],
+          ['Delete', 'delete', 'M4 7h16m-10 4v6m4-6v6M5 7l1 14h12l1-14M9 7V4h6v3']
+        ];
+        fileMenuActions.forEach(([label, action, iconPath]) => {
           const item = document.createElement('button');
           item.className = 'file-menu-item';
           item.type = 'button';
           item.setAttribute('role', 'menuitem');
           item.dataset.action = action;
-          item.textContent = label;
+          const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          icon.setAttribute('viewBox', '0 0 24 24');
+          icon.setAttribute('aria-hidden', 'true');
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', iconPath);
+          icon.append(path);
+          const text = document.createElement('span');
+          text.textContent = label;
+          item.append(icon, text);
           menu.append(item);
         });
         menuWrap.append(menuButton, menu);
@@ -430,55 +439,6 @@
     if (event.key !== 'Escape') return;
     document.querySelectorAll('.file-menu').forEach((menu) => { menu.hidden = true; });
     document.querySelectorAll('.file-menu-button').forEach((button) => button.setAttribute('aria-expanded', 'false'));
-  });
-
-  const authModal = document.getElementById('auth-modal');
-  const loginForm = document.getElementById('login-form');
-  const signupForm = document.getElementById('signup-form');
-  const authTitle = document.getElementById('auth-title');
-  function setAuthMode(mode) {
-    const signup = mode === 'signup';
-    loginForm.hidden = signup;
-    signupForm.hidden = !signup;
-    authTitle.textContent = signup ? 'Create your account' : 'Welcome back';
-    document.querySelectorAll('[data-auth-mode]').forEach((tab) => {
-      const active = tab.dataset.authMode === mode;
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-pressed', String(active));
-    });
-  }
-  document.getElementById('login-button').addEventListener('click', () => {
-    authModal.hidden = false;
-    document.getElementById('auth-close').focus();
-  });
-  document.getElementById('auth-close').addEventListener('click', () => { authModal.hidden = true; });
-  authModal.addEventListener('click', (event) => {
-    if (event.target === authModal) authModal.hidden = true;
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !authModal.hidden) authModal.hidden = true;
-  });
-  document.querySelectorAll('[data-auth-mode]').forEach((tab) => {
-    tab.addEventListener('click', () => setAuthMode(tab.dataset.authMode));
-  });
-  signupForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const password = signupForm.elements.password;
-    const confirmation = signupForm.elements['confirm-password'];
-    confirmation.setCustomValidity(password.value === confirmation.value ? '' : 'Passwords do not match.');
-    if (!signupForm.reportValidity()) return;
-    showToast('Sign-up needs an authentication server before it can create an account.');
-  });
-  signupForm.elements['confirm-password'].addEventListener('input', (event) => {
-    event.target.setCustomValidity('');
-  });
-  loginForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    if (!loginForm.reportValidity()) return;
-    showToast('Login needs an authentication server before it can sign you in.');
-  });
-  document.getElementById('google-signin').addEventListener('click', () => {
-    showToast('Google sign-in needs OAuth setup before it can continue.');
   });
 
   document.getElementById('footer-year').textContent = String(new Date().getFullYear());
