@@ -30,13 +30,16 @@
     "'Harmattan', sans-serif", "'Noto Sans Arabic', sans-serif", "'Noto Kufi Arabic', sans-serif",
     "'Reem Kufi', sans-serif", "'Mada', sans-serif", "'Tajawal', sans-serif", "'Cairo', sans-serif",
     "'IBM Plex Sans Arabic', sans-serif", "'Changa', sans-serif", "'Lemonada', cursive",
-    "'El Messiri', sans-serif", "'Mirza', serif", "'Aref Ruqaa', serif"
+    "'El Messiri', sans-serif", "'Mirza', serif", "'Aref Ruqaa', serif",
+    "'Alexandria', sans-serif", "'Almarai', sans-serif", "'Noto Serif Arabic', serif",
+    "'Rakkas', serif", "'Readex Pro', sans-serif", "'Rubik', sans-serif"
   ];
   const fontNames = [
     'Noto Nastaliq Urdu', 'Gulzar', 'Noto Naskh Arabic', 'Lateef', 'Amiri',
     'Markazi Text', 'Scheherazade New', 'Harmattan', 'Noto Sans Arabic',
     'Noto Kufi Arabic', 'Reem Kufi', 'Mada', 'Tajawal', 'Cairo',
-    'IBM Plex Sans Arabic', 'Changa', 'Lemonada', 'El Messiri', 'Mirza', 'Aref Ruqaa'
+    'IBM Plex Sans Arabic', 'Changa', 'Lemonada', 'El Messiri', 'Mirza', 'Aref Ruqaa',
+    'Alexandria', 'Almarai', 'Noto Serif Arabic', 'Rakkas', 'Readex Pro', 'Rubik'
   ];
   const polygonShapeTypes = new Set([
     'triangle', 'right-triangle', 'diamond', 'pentagon', 'hexagon', 'octagon',
@@ -116,6 +119,12 @@
           clean.className = `document-${documentRegion}`;
         } else if (name === 'data-document-region' && node.tagName === 'DIV' && value === documentRegion) {
           clean.dataset.documentRegion = value;
+        } else if (name === 'data-document-alignment' && node.tagName === 'DIV' && documentRegion &&
+          ['left', 'center', 'right'].includes(value)) {
+          clean.dataset.documentAlignment = value;
+        } else if (name === 'data-header-alignment' && node.tagName === 'DIV' &&
+          documentRegion === 'header' && ['left', 'center', 'right'].includes(value)) {
+          clean.dataset.headerAlignment = value;
         } else if (name === 'data-empty' && node.tagName === 'DIV' && documentRegion && ['true', 'false'].includes(value)) {
           clean.dataset.empty = value;
         } else if (name === 'data-page-number-location' && node.tagName === 'DIV' && documentRegion &&
@@ -282,6 +291,9 @@
             if (property === 'line-height' && /^(?:\d+(?:\.\d+)?|normal)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (['margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start'].includes(property) && /^-?\d+(?:\.\d+)?(?:px|em|rem|%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (['color', 'background-color'].includes(property) && CSS.supports('color', styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'background-color' && node.tagName === 'SPAN' && CSS.supports('color', styleValue)) {
+              styles.push(`--text-highlight-color:${styleValue}`);
+            }
           }
           if (styles.length) clean.setAttribute('style', styles.join(';'));
         }
@@ -368,6 +380,16 @@
 
   function syncDocumentHeaderSpacing() {
     const header = editor.querySelector('.document-header:not([data-page-number-location])');
+    const headerButton = document.getElementById('header-insert-button');
+    const footerButton = document.getElementById('footer-insert-button');
+    const hasHeader = Boolean(editor.querySelector('.document-header'));
+    const hasFooter = Boolean(editor.querySelector('.document-footer'));
+    headerButton.setAttribute('aria-pressed', String(hasHeader));
+    headerButton.title = hasHeader ? 'Remove header' : 'Insert header';
+    headerButton.querySelector('span').textContent = hasHeader ? 'Remove Header' : 'Header';
+    footerButton.setAttribute('aria-pressed', String(hasFooter));
+    footerButton.title = hasFooter ? 'Remove footer' : 'Insert footer';
+    footerButton.querySelector('span').textContent = hasFooter ? 'Remove Footer' : 'Footer';
     const savedMarginTop = Number.parseFloat(editor.style.getPropertyValue('--document-margin-top'));
     const currentPaddingTop = rulerPixels(getComputedStyle(editor).paddingTop);
     editor.classList.toggle('has-document-header', Boolean(header));
@@ -1226,7 +1248,7 @@
       recoveryTimer = window.setTimeout(() => {
         recoveryTimer = 0;
         saveRecoveryDraft();
-      }, 500);
+      }, 1500);
     }
     window.clearTimeout(saveTimer);
     saveTimer = window.setTimeout(saveLocally, 350);
@@ -1362,7 +1384,11 @@
   }
 
   function rememberEditorSelection() {
-    if (document.activeElement !== editor) return;
+    const activeElement = document.activeElement;
+    const activeRegion = activeElement instanceof Element
+      ? activeElement.closest('[data-document-region]')
+      : null;
+    if (activeElement !== editor && activeRegion?.getAttribute('contenteditable') !== 'true') return;
     const selection = window.getSelection();
     if (selection && selection.rangeCount && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode)) {
       const range = selection.getRangeAt(0);
@@ -1421,6 +1447,19 @@
     protectRangeTimer = window.setTimeout(() => { protectSelectedRange = false; }, 400);
   }
 
+  function isAtStartOfBody(range) {
+    const firstParagraph = Array.from(editor.querySelectorAll('p')).find((paragraph) =>
+      !paragraph.closest('[data-document-region], .editor-shape, table'));
+    if (!firstParagraph) return false;
+    const walker = document.createTreeWalker(firstParagraph, NodeFilter.SHOW_TEXT);
+    const firstText = walker.nextNode();
+    const bodyStart = document.createRange();
+    if (firstText) bodyStart.setStart(firstText, 0);
+    else bodyStart.selectNodeContents(firstParagraph);
+    bodyStart.collapse(true);
+    return range.compareBoundaryPoints(Range.START_TO_START, bodyStart) <= 0;
+  }
+
   document.querySelector('.ribbon').addEventListener('pointerdown', rememberEditorSelection, true);
   editor.addEventListener('pointerup', () => {
     protectSelectedRange = false;
@@ -1446,11 +1485,19 @@
 
   function focusEditor() {
     rememberEditorSelection();
-    editor.focus();
     const selection = window.getSelection();
     const savedNode = savedEditorRange?.commonAncestorContainer;
     const savedElement = savedNode instanceof Element ? savedNode : savedNode?.parentElement;
     const savedRegion = savedElement?.closest('[data-document-region]');
+    if (savedRegion?.getAttribute('contenteditable') === 'true') {
+      savedRegion.focus();
+      if (selection && savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(savedEditorRange);
+      }
+      return;
+    }
+    editor.focus();
     if (savedRegion && savedRegion.getAttribute('contenteditable') !== 'true') {
       savedEditorRange = null;
     }
@@ -1653,9 +1700,17 @@
     return true;
   }
 
-  function insertHtml(html) {
+  function insertHtml(html, atDocumentRoot = false) {
     focusEditor();
-    if (document.queryCommandSupported('insertHTML')) {
+    if (atDocumentRoot) {
+      const selection = window.getSelection();
+      let anchor = selection?.anchorNode;
+      while (anchor && anchor !== editor && anchor.parentNode !== editor) anchor = anchor.parentNode;
+      const insertionPoint = anchor?.parentNode === editor ? anchor.nextSibling : null;
+      const fragmentRange = document.createRange();
+      fragmentRange.selectNodeContents(editor);
+      editor.insertBefore(fragmentRange.createContextualFragment(html), insertionPoint);
+    } else if (document.queryCommandSupported('insertHTML')) {
       document.execCommand('insertHTML', false, html);
     } else {
       editor.insertAdjacentHTML('beforeend', html);
@@ -1665,34 +1720,34 @@
   }
 
   function insertEditableTableElement(table) {
-    const tableCount = editor.querySelectorAll('table[data-canvas-table="true"]').length;
     const insertionRange = savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
       ? savedEditorRange.cloneRange()
       : null;
-    insertHtml(`${table.outerHTML}<p><br></p>`);
-    if (editor.querySelectorAll('table[data-canvas-table="true"]').length === tableCount) {
-      const spacer = document.createElement('p');
-      spacer.append(document.createElement('br'));
-      if (insertionRange) {
-        insertionRange.deleteContents();
-        insertionRange.insertNode(table);
-        table.after(spacer);
-        insertionRange.setStartAfter(spacer);
-      } else {
-        editor.append(table, spacer);
-        insertionRange?.setStartAfter(spacer);
-      }
-      if (insertionRange) {
-        insertionRange.collapse(true);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(insertionRange);
-        savedEditorRange = insertionRange.cloneRange();
-      }
-      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertHTML' }));
-      scheduleSave();
-      updateCounts();
+    let anchor = insertionRange?.startContainer || null;
+    while (anchor && anchor !== editor && anchor.parentNode !== editor) anchor = anchor.parentNode;
+    if (anchor instanceof Element && anchor.matches('.document-header, .document-footer')) anchor = null;
+
+    let insertionPoint = anchor?.parentNode === editor ? anchor.nextSibling : null;
+    if (!anchor) {
+      const pageBreaks = Array.from(editor.querySelectorAll(':scope > .page-break'));
+      const pageIndex = Math.max(0, Math.min(pageBreaks.length, Number(verticalRuler.dataset.pageIndex) || 0));
+      insertionPoint = pageBreaks[pageIndex] || editor.querySelector(':scope > .document-footer');
     }
+    editor.insertBefore(table, insertionPoint);
+    const spacer = document.createElement('p');
+    spacer.append(document.createElement('br'));
+    table.after(spacer);
+    const spacerRange = document.createRange();
+    spacerRange.selectNodeContents(spacer);
+    spacerRange.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(spacerRange);
+    savedEditorRange = spacerRange.cloneRange();
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertHTML' }));
+    scheduleSave();
+    updateCounts();
+
     const insertedTable = editor.querySelector('table[data-table-insertion-token]');
     if (insertedTable) insertedTable.removeAttribute('data-table-insertion-token');
     return insertedTable;
@@ -1938,6 +1993,14 @@
       return;
     }
     document.execCommand(command, false, value);
+    if (command === 'hiliteColor' && currentRange && !currentRange.collapsed &&
+      typeof value === 'string' && value !== 'transparent') {
+      editor.querySelectorAll('span[style*="background-color"]').forEach((span) => {
+        if (currentRange.intersectsNode(span)) {
+          span.style.setProperty('--text-highlight-color', span.style.backgroundColor);
+        }
+      });
+    }
     if (['bold', 'italic', 'underline', 'fontName', 'foreColor', 'hiliteColor'].includes(command)) {
       preserveSelectedRange(currentRange);
     }
@@ -1965,6 +2028,16 @@
       selectionElement?.closest('.editor-textbox');
     const editableShape = eventElement?.closest('.editor-shape[contenteditable="true"]') ||
       selectionElement?.closest('.editor-shape[contenteditable="true"]');
+    if (!documentRegion && !textBox && !editableShape && selection?.rangeCount &&
+      ['Backspace', 'Delete'].includes(event.key)) {
+      const range = selection.getRangeAt(0);
+      const crossesDocumentRegion = Array.from(editor.querySelectorAll('[data-document-region]'))
+        .some((region) => range.intersectsNode(region));
+      if (crossesDocumentRegion || (event.key === 'Backspace' && range.collapsed && isAtStartOfBody(range))) {
+        event.preventDefault();
+        return;
+      }
+    }
     if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'a') {
       event.preventDefault();
       event.stopPropagation();
@@ -2310,7 +2383,25 @@
   document.querySelectorAll('[data-paragraph-align]').forEach((button) => {
     button.addEventListener('click', () => {
       const alignment = button.dataset.paragraphAlign;
-      runCommand(alignment === 'justify' ? 'justifyFull' : `justify${alignment[0].toUpperCase()}${alignment.slice(1)}`);
+      const currentSelection = window.getSelection();
+      const selectionNode = currentSelection?.anchorNode;
+      const selectionElement = selectionNode instanceof Element ? selectionNode : selectionNode?.parentElement;
+      const documentRegion = selectionElement?.closest('[data-document-region]');
+      const isDocumentRegionSelection = documentRegion && editor.contains(documentRegion);
+      if (isDocumentRegionSelection) {
+        documentRegion.dataset.documentAlignment = alignment === 'justify' ? 'center' : alignment;
+        documentRegion.style.textAlign = alignment;
+        documentRegion.querySelectorAll(':scope > p').forEach((paragraph) => {
+          paragraph.style.textAlign = alignment;
+        });
+      } else {
+        runCommand(alignment === 'justify' ? 'justifyFull' : `justify${alignment[0].toUpperCase()}${alignment.slice(1)}`);
+      }
+      if (isDocumentRegionSelection) {
+        syncDocumentHeaderSpacing();
+        scheduleSave();
+        updateCounts();
+      }
       const selection = window.getSelection();
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       if (range) {
@@ -2466,6 +2557,15 @@
       const customOption = palette.querySelector('.more-colors');
       palette.insertBefore(swatch, customOption || null);
     });
+    if (picker.dataset.colorPicker === 'highlight') {
+      const clearHighlight = document.createElement('button');
+      clearHighlight.type = 'button';
+      clearHighlight.className = 'color-clear-option';
+      clearHighlight.dataset.clearHighlight = 'true';
+      clearHighlight.textContent = 'No color';
+      clearHighlight.setAttribute('aria-label', 'Remove text highlight');
+      palette.append(clearHighlight);
+    }
     const customOption = palette.querySelector('.more-colors');
     if (customOption && customOption.tagName === 'LABEL') customOption.firstChild.textContent = 'CUSTOM';
     const customActions = document.createElement('div');
@@ -2507,6 +2607,14 @@
       picker.classList.toggle('open');
     });
     palette.addEventListener('click', (event) => {
+      const clearHighlight = event.target.closest('[data-clear-highlight]');
+      if (clearHighlight) {
+        event.preventDefault();
+        picker.classList.remove('open');
+        colorTool.querySelector('span').style.backgroundColor = 'transparent';
+        runCommand('hiliteColor', 'transparent');
+        return;
+      }
       const swatch = event.target.closest('[data-color]');
       if (!swatch) return;
       event.preventDefault();
@@ -2992,7 +3100,7 @@
     const lineColor = '#176b9a';
     const fillColor = '#dce8f5';
     const backgroundColor = geometry === 'polygon' || type === 'line' ? lineColor : fillColor;
-    insertHtml(`<div class="editor-shape" contenteditable="false" data-editor-shape="true" data-shape-type="${type}" data-shape-geometry="${geometry}" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="2" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${shapeHeight}px;background-color:${backgroundColor};border-color:${lineColor};border-width:2px"></div><p><br></p>`);
+    insertHtml(`<div class="editor-shape" contenteditable="false" data-editor-shape="true" data-shape-type="${type}" data-shape-geometry="${geometry}" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="2" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${shapeHeight}px;background-color:${backgroundColor};border-color:${lineColor};border-width:2px"></div><p><br></p>`, true);
     const shapes = editor.querySelectorAll('.editor-shape');
     const shape = shapes[shapes.length - 1];
     if (shape) {
@@ -3056,7 +3164,7 @@
         Math.round(paddingLeft + (pageWidth - paddingLeft - paddingRight - width) / 2));
     const lineColor = '#176b9a';
     const fillColor = '#ffffff';
-    insertHtml(`<div class="editor-shape editor-textbox" tabindex="0" contenteditable="true" dir="auto" data-editor-shape="true" data-editor-textbox="true" data-shape-type="rectangle" data-shape-geometry="basic" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="1" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;background-color:${fillColor};border-color:${lineColor};border-width:1px"></div><p><br></p>`);
+    insertHtml(`<div class="editor-shape editor-textbox" tabindex="0" contenteditable="true" dir="auto" data-editor-shape="true" data-editor-textbox="true" data-shape-type="rectangle" data-shape-geometry="basic" data-shape-fill="${fillColor}" data-shape-line="${lineColor}" data-shape-line-width="1" data-shape-opacity="100" data-shape-rotation="0" style="position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;background-color:${fillColor};border-color:${lineColor};border-width:1px"></div><p><br></p>`, true);
     const textBox = editor.querySelectorAll('.editor-textbox');
     const activeTextBox = textBox[textBox.length - 1];
     if (!activeTextBox) return;
@@ -3070,38 +3178,31 @@
     selection.addRange(range);
     activeTextBox.focus({ preventScroll: true });
   });
+  let textBoxManipulatorFrame = 0;
   const resizeTextBoxToFit = (textBox) => {
     if (!textBox || !editor.contains(textBox)) return;
     const left = Number.parseFloat(textBox.style.left) || 0;
     const editorStyle = getComputedStyle(editor);
     const paddingRight = Number.parseFloat(editorStyle.paddingRight) || 0;
     const availableWidth = Math.max(1, editor.clientWidth - left - paddingRight - 16);
-    const measurement = textBox.cloneNode(true);
-    measurement.classList.remove('shape-selected');
-    measurement.style.setProperty('position', 'fixed', 'important');
-    measurement.style.setProperty('left', '-10000px', 'important');
-    measurement.style.setProperty('top', '0', 'important');
-    measurement.style.setProperty('width', 'max-content', 'important');
-    measurement.style.setProperty('min-width', '0', 'important');
-    measurement.style.setProperty('max-width', 'none', 'important');
-    measurement.style.setProperty('height', 'auto', 'important');
-    measurement.style.setProperty('min-height', '0', 'important');
-    measurement.style.setProperty('white-space', 'pre', 'important');
-    measurement.style.setProperty('visibility', 'hidden', 'important');
-    editor.append(measurement);
-    const contentWidth = measurement.getBoundingClientRect().width;
-    measurement.remove();
-    textBox.style.maxWidth = `${availableWidth}px`;
+    const maxWidth = `${availableWidth}px`;
+    if (textBox.style.maxWidth !== maxWidth) textBox.style.maxWidth = maxWidth;
     if (textBox.dataset.textboxManualWidth !== 'true') {
       const minimumWidth = Math.min(240, availableWidth);
-      textBox.style.minWidth = `${minimumWidth}px`;
-      textBox.style.width = `${Math.max(minimumWidth, Math.min(availableWidth, contentWidth))}px`;
+      const minWidth = `${minimumWidth}px`;
+      if (textBox.style.minWidth !== minWidth) textBox.style.minWidth = minWidth;
+      if (textBox.style.width !== 'auto') textBox.style.width = 'auto';
     } else {
-      textBox.style.minWidth = '20px';
+      if (textBox.style.minWidth !== '20px') textBox.style.minWidth = '20px';
     }
-    textBox.style.height = 'auto';
-    textBox.style.height = `${Math.max(38, textBox.scrollHeight)}px`;
-    if (activeShape === textBox) refreshShapeManipulators(textBox);
+    if (textBox.style.height !== 'auto') textBox.style.height = 'auto';
+    if (activeShape === textBox) {
+      window.cancelAnimationFrame(textBoxManipulatorFrame);
+      textBoxManipulatorFrame = window.requestAnimationFrame(() => {
+        textBoxManipulatorFrame = 0;
+        if (activeShape === textBox && editor.contains(textBox)) refreshShapeManipulators(textBox);
+      });
+    }
   };
   editor.addEventListener('input', (event) => {
     const target = event.target instanceof Element ? event.target : event.target.parentElement;
@@ -3325,6 +3426,8 @@
     range.selectNodeContents(paragraph);
     range.collapse(false);
     const selection = window.getSelection();
+    editor.dataset.documentEditing = region.dataset.documentRegion;
+    editor.setAttribute('contenteditable', 'false');
     region.setAttribute('contenteditable', 'true');
     region.tabIndex = 0;
     region.focus();
@@ -3337,6 +3440,10 @@
     region.setAttribute('contenteditable', 'false');
     region.removeAttribute('tabindex');
     region.dataset.empty = String(!region.textContent.trim());
+    if (editor.dataset.documentEditing === region.dataset.documentRegion) {
+      delete editor.dataset.documentEditing;
+      editor.setAttribute('contenteditable', 'true');
+    }
     if (savedEditorRange && region.contains(savedEditorRange.commonAncestorContainer)) {
       savedEditorRange = null;
     }
@@ -3345,16 +3452,31 @@
   }
   document.addEventListener('pointerdown', (event) => {
     const region = editor.querySelector('[data-document-region][contenteditable="true"]');
-    if (region && !region.contains(event.target)) lockDocumentRegion(region);
+    if (!region || region.contains(event.target)) return;
+    rememberEditorSelection();
+    const target = event.target instanceof Element ? event.target : event.target.parentElement;
+    if (target?.closest('.ribbon, .context-toolbar, .insert-menu, .layout-menu')) return;
+    lockDocumentRegion(region);
+    if (editor.contains(event.target)) editor.dataset.documentEditing = 'body';
+    else delete editor.dataset.documentEditing;
   }, true);
-  document.getElementById('header-insert-button').addEventListener('click', () => {
-    ensureDocumentRegion('header').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  function toggleDocumentRegion(name) {
+    const region = editor.querySelector(`.document-${name}`);
+    if (region) {
+      lockDocumentRegion(region);
+      if (savedEditorRange && region.contains(savedEditorRange.commonAncestorContainer)) {
+        savedEditorRange = null;
+      }
+      region.remove();
+    } else {
+      ensureDocumentRegion(name).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    syncDocumentHeaderSpacing();
+    updateCounts();
     scheduleSave();
-  });
-  document.getElementById('footer-insert-button').addEventListener('click', () => {
-    ensureDocumentRegion('footer').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    scheduleSave();
-  });
+  }
+  document.getElementById('header-insert-button').addEventListener('click', () => toggleDocumentRegion('header'));
+  document.getElementById('footer-insert-button').addEventListener('click', () => toggleDocumentRegion('footer'));
   editor.addEventListener('dblclick', (event) => {
     const region = event.target.closest('[data-document-region]');
     if (!region || !editor.contains(region)) return;
@@ -3364,12 +3486,24 @@
   editor.addEventListener('focusout', (event) => {
     const region = event.target.closest('[data-document-region]');
     if (!region || region.contains(event.relatedTarget) || event.relatedTarget === editor) return;
+    const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+    if (nextTarget?.closest('.ribbon, .context-toolbar, .insert-menu, .layout-menu')) return;
     lockDocumentRegion(region);
   });
-  editor.addEventListener('input', () => {
+  editor.addEventListener('focusin', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const region = target?.closest('[data-document-region]');
+    if (region?.getAttribute('contenteditable') === 'true' ||
+      editor.getAttribute('contenteditable') === 'false') return;
+    editor.dataset.documentEditing = 'body';
+  });
+  editor.addEventListener('input', (event) => {
     editor.querySelectorAll('[data-document-region]').forEach((region) => {
       region.dataset.empty = String(!region.textContent.trim());
     });
+    const target = event.target instanceof Element ? event.target : event.target.parentElement;
+    const header = target?.closest('.document-header:not([data-page-number-location])');
+    if (header && editor.contains(header)) syncDocumentHeaderSpacing();
   });
   document.getElementById('image-button').addEventListener('click', () => {
     document.getElementById('image-input').click();
