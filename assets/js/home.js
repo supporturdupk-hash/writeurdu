@@ -476,7 +476,22 @@
     const confirmation = signupForm.elements['confirm-password'];
     confirmation.setCustomValidity(password.value === confirmation.value ? '' : 'Passwords do not match.');
     if (!signupForm.reportValidity()) return;
-    showToast('Sign-up needs an authentication server before it can create an account.');
+    const auth = window.URDU_WRITER_AUTH;
+    if (!auth) {
+      showToast('The authentication module could not be loaded. Please try again later.');
+      return;
+    }
+    auth.signUpWithEmail(signupForm.elements.email.value, password.value, signupForm.elements.name.value)
+      .then((result) => {
+        if (!result) return;
+        if (result.session) {
+          authModal.hidden = true;
+          showToast('Your account has been created.');
+        } else {
+          document.getElementById('auth-notice').textContent = 'Check your email to confirm your account, then sign in.';
+          document.getElementById('auth-notice').className = 'auth-notice success';
+        }
+      });
   });
   signupForm.elements['confirm-password'].addEventListener('input', (event) => {
     event.target.setCustomValidity('');
@@ -484,10 +499,27 @@
   loginForm.addEventListener('submit', (event) => {
     event.preventDefault();
     if (!loginForm.reportValidity()) return;
-    showToast('Login needs an authentication server before it can sign you in.');
+    const auth = window.URDU_WRITER_AUTH;
+    if (!auth) {
+      showToast('The authentication module could not be loaded. Please try again later.');
+      return;
+    }
+    auth.signInWithEmail(loginForm.elements.email.value, loginForm.elements.password.value)
+      .then((result) => {
+        if (!result) return;
+        authModal.hidden = true;
+        showToast('You are signed in.');
+      });
   });
   document.getElementById('google-signin').addEventListener('click', () => {
-    showToast('Google sign-in needs OAuth setup before it can continue.');
+    if (typeof window.signInWithGoogle !== 'function') {
+      showToast('The authentication module could not be loaded. Please try again later.');
+      return;
+    }
+    window.signInWithGoogle();
+  });
+  document.getElementById('logout-button').addEventListener('click', () => {
+    if (typeof window.signOut === 'function') window.signOut();
   });
 
   document.getElementById('footer-year').textContent = String(new Date().getFullYear());

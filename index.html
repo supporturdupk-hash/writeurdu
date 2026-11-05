@@ -11,10 +11,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/home.css">
+  <link rel="stylesheet" href="assets/css/home.css?v=design-20261105-2">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" defer></script>
+  <script src="assets/js/feedback-config.js" defer></script>
+  <script src="assets/js/auth.js" defer></script>
   <script src="assets/js/home.js" defer></script>
 </head>
 <body class="home-page">
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <header class="home-header" dir="ltr">
     <a class="home-brand" href="index.html">Urdu Writer</a>
     <nav class="header-nav" aria-label="Main navigation">
@@ -26,15 +30,21 @@
     </nav>
     <div class="header-actions">
       <button id="login-button" class="header-start" type="button">Login</button>
+      <div id="user-profile" class="user-profile" hidden>
+        <img id="user-avatar" class="user-avatar" alt="" referrerpolicy="no-referrer" hidden>
+        <span id="user-avatar-fallback" class="user-avatar-fallback" aria-hidden="true">U</span>
+        <span class="user-profile-copy"><strong id="user-profile-name"></strong><small id="user-profile-email"></small></span>
+        <button id="logout-button" class="logout-button" type="button">Sign out</button>
+      </div>
       <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Light theme on" title="Switch to dark theme" aria-pressed="false"><span id="theme-icon" aria-hidden="true">☼</span></button>
     </div>
   </header>
 
-  <main>
+  <main id="main-content">
     <section class="welcome-band">
       <div class="welcome-inner">
         <div class="welcome-copy">
-          <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> A focused workspace for Urdu</p>
+          <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span> YOUR WORDS, YOUR WAY <span class="eyebrow-urdu" lang="ur" dir="rtl">اردو لکھیں</span></p>
           <h1>Write in Urdu<br><span>Without limits.</span></h1>
           <p class="welcome-description">A thoughtfully simple editor for your letters, ideas, and everyday writing. Type right to left, save as you go, and print when you’re ready.</p>
           <div class="welcome-actions">
@@ -65,6 +75,27 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <section class="value-strip" aria-label="The Urdu Writer difference">
+      <article class="value-item">
+        <span class="value-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/><path d="M8 12h2l1.2-2.2 1.7 4.4 1.1-2.2h2"/></svg>
+        </span>
+        <span><strong>Made for Urdu</strong><small>Right-to-left writing, naturally</small></span>
+      </article>
+      <article class="value-item">
+        <span class="value-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 3 19 6v5c0 4.7-3 8-7 10-4-2-7-5.3-7-10V6l7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+        </span>
+        <span><strong>Private by design</strong><small>Your documents stay on this device</small></span>
+      </article>
+      <article class="value-item">
+        <span class="value-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M7 8V3h10v5M7 18H5a2 2 0 0 1-2-2v-5a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v5a2 2 0 0 1-2 2h-2"/><path d="M7 14h10v7H7zM17 11h.01"/></svg>
+        </span>
+        <span><strong>Ready when you are</strong><small>Format, download, or print with ease</small></span>
+      </article>
     </section>
 
     <div class="home-content">
@@ -206,7 +237,7 @@
           </details>
           <details class="faq-item">
             <summary>Is login or Google sign-in working?</summary>
-            <p>Not yet. The login, sign-up, and Google sign-in controls are interface-only and do not create accounts or save the details entered.</p>
+            <p>Yes, once Supabase is configured by the site operator. Sign-in uses Supabase Auth; documents remain stored only in this browser and are not synced to an account.</p>
           </details>
           <details class="faq-item">
             <summary>How can I contact support?</summary>
@@ -242,7 +273,6 @@
       </form>
       <form id="signup-form" class="auth-form" hidden>
         <label>Name<input name="name" type="text" autocomplete="name" required></label>
-        <label>Phone number<input name="phone" type="tel" autocomplete="tel" required></label>
         <label>Email<input name="email" type="email" autocomplete="email" required></label>
         <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
         <label>Confirm password<input name="confirm-password" type="password" autocomplete="new-password" minlength="8" required></label>
@@ -250,7 +280,7 @@
       </form>
       <div class="auth-separator"><span>or continue with</span></div>
       <button id="google-signin" class="google-signin" type="button"><img src="assets/Media/google-icon-logo-svgrepo-com.svg" alt="">Continue with Google</button>
-      <p class="auth-notice" role="status">Sign-in is not connected to a server yet. Your details are not sent or saved.</p>
+      <p id="auth-notice" class="auth-notice" role="status" aria-live="polite">Checking authentication settings…</p>
     </section>
   </div>
   <div id="home-toast" class="home-toast" role="status" aria-live="polite"></div>
