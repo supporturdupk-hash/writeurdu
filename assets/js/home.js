@@ -441,6 +441,55 @@
     document.querySelectorAll('.file-menu-button').forEach((button) => button.setAttribute('aria-expanded', 'false'));
   });
 
+  const authModal = document.getElementById('auth-modal');
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
+  const authTitle = document.getElementById('auth-title');
+  function setAuthMode(mode) {
+    const signup = mode === 'signup';
+    loginForm.hidden = signup;
+    signupForm.hidden = !signup;
+    authTitle.textContent = signup ? 'Create your account' : 'Welcome back';
+    document.querySelectorAll('[data-auth-mode]').forEach((tab) => {
+      const active = tab.dataset.authMode === mode;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-pressed', String(active));
+    });
+  }
+  document.getElementById('login-button').addEventListener('click', () => {
+    authModal.hidden = false;
+    document.getElementById('auth-close').focus();
+  });
+  document.getElementById('auth-close').addEventListener('click', () => { authModal.hidden = true; });
+  authModal.addEventListener('click', (event) => {
+    if (event.target === authModal) authModal.hidden = true;
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !authModal.hidden) authModal.hidden = true;
+  });
+  document.querySelectorAll('[data-auth-mode]').forEach((tab) => {
+    tab.addEventListener('click', () => setAuthMode(tab.dataset.authMode));
+  });
+  signupForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const password = signupForm.elements.password;
+    const confirmation = signupForm.elements['confirm-password'];
+    confirmation.setCustomValidity(password.value === confirmation.value ? '' : 'Passwords do not match.');
+    if (!signupForm.reportValidity()) return;
+    showToast('Sign-up needs an authentication server before it can create an account.');
+  });
+  signupForm.elements['confirm-password'].addEventListener('input', (event) => {
+    event.target.setCustomValidity('');
+  });
+  loginForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!loginForm.reportValidity()) return;
+    showToast('Login needs an authentication server before it can sign you in.');
+  });
+  document.getElementById('google-signin').addEventListener('click', () => {
+    showToast('Google sign-in needs OAuth setup before it can continue.');
+  });
+
   document.getElementById('footer-year').textContent = String(new Date().getFullYear());
   renderTemplatePreviews();
   loadSavedDocuments();

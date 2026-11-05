@@ -9,9 +9,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@400;500;600;700&family=Almarai:wght@400;700;800&family=Aref+Ruqaa:wght@400;700&family=Amiri:wght@400;700&family=Cairo:wght@400;500;600;700&family=Changa:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=El+Messiri:wght@400;500;600;700&family=Gulzar&family=Harmattan:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Lateef:wght@400;500;600;700&family=Lemonada:wght@400;500;600;700&family=Markazi+Text:wght@400;500;600;700&family=Mada:wght@400;500;600;700&family=Mirza:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;500;600&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Serif+Arabic:wght@400;500;600;700&family=Rakkas&family=Readex+Pro:wght@400;500;600;700&family=Reem+Kufi:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&family=Tajawal:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/editor.css">
+  <link rel="stylesheet" href="assets/css/editor.css?v=mobile-editor-20261105-6">
   <script src="assets/js/urdu-keyboard.js" defer></script>
-  <script src="assets/js/editor.js" defer></script>
+  <script src="assets/js/WordStyleHistoryManager.js" defer></script>
+  <script src="assets/js/WordShapesEngine.js" defer></script>
+  <script src="assets/js/editor.js?v=editor-20261105-7" defer></script>
 </head>
 <body class="home-ribbon-active">
   <header class="app-header" dir="ltr">
@@ -22,9 +24,6 @@
       <span class="save-status" id="save-status" role="status" title="Saved on this device">Saved</span>
     </div>
     <div class="header-actions">
-      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu keyboard mapping" aria-pressed="true" title="Toggle Urdu keyboard mapping">
-        <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
-      </button>
       <button class="header-button download-action" id="download-button" type="button" aria-label="Open document download options" aria-expanded="false" aria-controls="download-panel">
         <img src="assets/Media/download-svgrepo-com.svg" alt=""><span>Download</span>
       </button>
@@ -77,16 +76,21 @@
 
   <nav class="tab-row" aria-label="Document tabs" dir="ltr">
     <button class="app-launcher" type="button" aria-label="All tools">⠿</button>
-    <button class="tab-button active" type="button" data-tab="home"><span class="mobile-tab-icon" aria-hidden="true">⌂</span><span class="tab-label">Home</span></button>
-    <button class="tab-button" type="button" data-tab="insert"><span class="mobile-tab-icon" aria-hidden="true">＋</span><span class="tab-label">Insert</span></button>
-    <button class="tab-button" type="button" data-tab="layout"><span class="mobile-tab-icon" aria-hidden="true">▦</span><span class="tab-label">Layout</span></button>
-    <button class="tab-button" type="button" data-tab="view"><span class="mobile-tab-icon" aria-hidden="true">◐</span><span class="tab-label">View</span></button>
-    <button id="mobile-keyboard-tab" class="tab-button mobile-keyboard-tab" type="button" data-tab="keyboard" aria-controls="onscreen-keyboard"><span class="mobile-tab-icon" aria-hidden="true">⌨</span><span class="tab-label">Keyboard</span></button>
-    <button class="tab-button" type="button" data-tab="help"><span class="mobile-tab-icon" aria-hidden="true">?</span><span class="tab-label">Help</span></button>
+    <button class="tab-button active" type="button" data-tab="home"><span class="mobile-tab-icon" aria-hidden="true">⌂</span>Home</button>
+    <button class="tab-button" type="button" data-tab="insert"><span class="mobile-tab-icon" aria-hidden="true">＋</span>Insert</button>
+    <button class="tab-button" type="button" data-tab="layout"><span class="mobile-tab-icon" aria-hidden="true">▤</span>Layout</button>
+    <button class="tab-button" type="button" data-tab="view"><span class="mobile-tab-icon" aria-hidden="true">◉</span>View</button>
+    <button class="tab-button" type="button" data-tab="help">Help</button>
     <button id="table-layout-tab" class="tab-button" type="button" data-tab="table-layout" hidden>Table Layout</button>
+    <button id="shape-format-tab" class="tab-button" type="button" data-tab="shape-format" hidden>Shape Format</button>
+    <button id="textbox-format-tab" class="tab-button" type="button" data-tab="textbox-format" hidden>Text Box Format</button>
+    <button id="picture-format-tab" class="tab-button" type="button" data-tab="picture-format" hidden>Picture Format</button>
     <span class="tab-spacer"></span>
     <div class="tab-actions">
       <button id="typing-help-button" class="help-button" type="button" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
+      <button id="typing-toggle" class="typing-toggle active" type="button" aria-label="Toggle Urdu keyboard mapping" aria-pressed="true" title="Toggle Urdu keyboard mapping">
+        <span class="typing-indicator" aria-hidden="true"></span><span>Urdu <strong>ON</strong></span>
+      </button>
       <button id="focus-toggle" class="header-button focus-action" type="button" aria-haspopup="dialog">▣ <span>Preview</span></button>
       <button id="header-toggle" class="bar-toggle header-toggle" type="button" aria-label="Hide top bar" aria-expanded="true" title="Hide top bar">
         <img src="assets/Media/down-arrow-5-svgrepo-com.svg" alt="">
@@ -100,8 +104,8 @@
       <div class="ribbon-group command-group">
         <button id="cut-button" class="icon-button clipboard-tool" type="button" title="Cut (Ctrl+X)" aria-label="Cut"><img src="assets/Media/cut-svgrepo-com.svg" alt=""></button>
         <button id="paste-button" class="icon-button clipboard-tool" type="button" title="Paste (Ctrl+V)" aria-label="Paste"><img src="assets/Media/paste-svgrepo-com.svg" alt=""></button>
-        <button id="undo-button" class="icon-button" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
-        <button id="redo-button" class="icon-button" type="button" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+        <button id="undo-button" class="icon-button" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
+        <button id="redo-button" class="icon-button" type="button" title="Redo (Ctrl+Y)" aria-label="Redo" disabled>↷</button>
         <button id="copy-button" class="icon-button clipboard-tool" type="button" title="Copy (Ctrl+C)" aria-label="Copy"><img src="assets/Media/copy-svgrepo-com.svg" alt=""></button>
       </div>
       <div class="ribbon-group format-group">
@@ -115,7 +119,7 @@
           </span>
           <label class="sr-only" for="font-size">Font size</label>
           <span class="font-size-control">
-            <input id="font-size" class="ribbon-select size-input" type="text" inputmode="numeric" value="18" aria-label="Font size in pixels" autocomplete="off">
+            <input id="font-size" class="ribbon-select size-input" type="text" inputmode="numeric" value="12" aria-label="Font size in pixels" autocomplete="off">
             <button id="font-size-toggle" class="font-size-toggle" type="button" aria-label="Show font sizes" aria-expanded="false">▾</button>
             <div id="font-size-menu" class="font-size-menu" role="listbox" aria-label="Choose font size" hidden>
               <button type="button" role="option" data-font-size="8">8</button><button type="button" role="option" data-font-size="9">9</button><button type="button" role="option" data-font-size="10">10</button><button type="button" role="option" data-font-size="11">11</button><button type="button" role="option" data-font-size="12">12</button><button type="button" role="option" data-font-size="14">14</button><button type="button" role="option" data-font-size="16">16</button><button type="button" role="option" data-font-size="18">18</button><button type="button" role="option" data-font-size="20">20</button><button type="button" role="option" data-font-size="22">22</button><button type="button" role="option" data-font-size="24">24</button><button type="button" role="option" data-font-size="26">26</button><button type="button" role="option" data-font-size="28">28</button><button type="button" role="option" data-font-size="36">36</button><button type="button" role="option" data-font-size="48">48</button><button type="button" role="option" data-font-size="72">72</button>
@@ -123,7 +127,7 @@
           </span>
           <button class="icon-button" type="button" title="Increase font size" aria-label="Increase font size" data-size-step="1">A⁺</button><button class="icon-button" type="button" title="Decrease font size" aria-label="Decrease font size" data-size-step="-1">A⁻</button>
           <span class="ribbon-divider"></span>
-          <button class="icon-button text-tool" type="button" data-command="bold" title="Bold" aria-label="Bold"><strong>B</strong></button><button class="icon-button text-tool italic-tool" type="button" data-command="italic" title="Italic" aria-label="Italic"><em>I</em></button><button class="icon-button text-tool" type="button" data-command="underline" title="Underline" aria-label="Underline"><u>U</u></button>
+          <button class="icon-button text-tool" type="button" data-command="bold" title="Bold" aria-label="Bold" aria-pressed="false"><strong>B</strong></button><button class="icon-button text-tool italic-tool" type="button" data-command="italic" title="Italic" aria-label="Italic" aria-pressed="false"><em>I</em></button><span class="split-tool underline-split-tool"><button class="icon-button text-tool underline-main" type="button" data-command="underline" title="Underline" aria-label="Underline" aria-pressed="false"><u>U</u></button><button class="icon-button split-arrow underline-arrow" type="button" data-list-menu="underline" aria-label="Underline options" aria-expanded="false" aria-controls="underline-menu">▾</button></span>
           <span class="ribbon-divider"></span>
           <div class="color-picker" data-color-picker="text">
             <button class="color-tool text-color-tool" type="button" aria-label="Text color" title="Text color">A<span></span></button>
@@ -148,15 +152,20 @@
           <span class="ribbon-divider"></span>
           <div class="alignment-tools" role="group" aria-label="Paragraph alignment">
             <button class="icon-button alignment-button" type="button" data-paragraph-align="left" aria-label="Align left" title="Align left"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.3h8M2 9.7h12M2 13h8"/></svg></button>
-            <button class="icon-button alignment-button active" type="button" data-paragraph-align="right" aria-label="Align right" title="Align right"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M6 6.3h8M2 9.7h12M6 13h8"/></svg></button>
             <button class="icon-button alignment-button" type="button" data-paragraph-align="center" aria-label="Center" title="Center"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M4 6.3h8M2 9.7h12M4 13h8"/></svg></button>
+            <button class="icon-button alignment-button active" type="button" data-paragraph-align="right" aria-label="Align right" title="Align right"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M6 6.3h8M2 9.7h12M6 13h8"/></svg></button>
             <button class="icon-button alignment-button" type="button" data-paragraph-align="justify" aria-label="Justify" title="Justify"><svg class="align-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.3h12M2 9.7h12M2 13h12"/></svg></button>
+          </div>
+          <span class="ribbon-divider"></span>
+          <div class="color-picker" data-color-picker="shading">
+            <button class="color-tool shading-tool" type="button" aria-label="Paragraph shading" title="Paragraph shading"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7-7 7H5zM8.5 8.5l7 7M4 21h16"/></svg><span></span></button>
+            <div class="color-palette" role="group" aria-label="Paragraph shading color palette"><label class="more-colors">More colors<input id="paragraph-shading-color" type="color" value="#fff2cc" aria-label="More paragraph shading colors"></label></div>
           </div>
           <span class="ribbon-divider"></span>
           <span class="split-tool spacing-tool">
             <button class="icon-button paragraph-tool-main" type="button" data-spacing-step="1" title="Cycle line spacing" aria-label="Cycle line spacing"><img class="paragraph-tool-icon" src="assets/Media/paragraph-spacing-svgrepo-com.svg" alt=""></button><button class="icon-button split-arrow" type="button" data-list-menu="spacing" aria-label="Line spacing options" aria-expanded="false">▾</button>
           </span>
-          <label class="line-spacing" hidden><select id="line-spacing" aria-label="Line spacing"><option value="1.5">1.5</option><option value="1.8" selected>1.8</option><option value="2">2.0</option></select></label>
+          <label class="line-spacing" hidden><select id="line-spacing" aria-label="Line spacing"><option value="1">1.0</option><option value="1.15" selected>1.15</option><option value="1.5">1.5</option><option value="1.7">1.7</option><option value="2">2.0</option><option value="2.5">2.5</option><option value="3">3.0</option></select></label>
         </div>
         <div class="paragraph-menu" id="bullet-menu" role="dialog" aria-label="Bullet Library" hidden>
           <strong>Bullet Library</strong>
@@ -176,13 +185,25 @@
         </div>
         <div class="paragraph-menu spacing-menu" id="spacing-menu" role="listbox" aria-label="Line spacing options" hidden>
           <strong>Line Spacing</strong>
-          <button type="button" data-line-spacing="1">1.0</button><button type="button" data-line-spacing="1.15">1.15</button><button type="button" data-line-spacing="1.5">1.5</button><button type="button" data-line-spacing="2">2.0</button><button type="button" data-line-spacing="2.5">2.5</button><button type="button" data-line-spacing="3">3.0</button>
+          <button type="button" data-line-spacing="1">1.0</button><button type="button" data-line-spacing="1.15">1.15</button><button type="button" data-line-spacing="1.5">1.5</button><button type="button" data-line-spacing="1.7">1.7</button><button type="button" data-line-spacing="2">2.0</button><button type="button" data-line-spacing="2.5">2.5</button><button type="button" data-line-spacing="3">3.0</button>
           <div class="menu-separator"></div>
-          <label class="custom-line-spacing">Custom <input id="custom-line-spacing" type="number" min="0.5" max="10" step="0.1" value="1.8" aria-label="Custom line spacing"></label>
+          <label class="custom-line-spacing">Custom <input id="custom-line-spacing" type="number" min="0.5" max="10" step="0.1" value="1.7" aria-label="Custom line spacing"></label>
           <button type="button" id="apply-custom-line-spacing">Apply custom spacing</button>
           <div class="menu-separator"></div>
           <button type="button" data-paragraph-space="before">↕ <span>Add Space Before Paragraph</span></button>
           <button type="button" data-paragraph-space="after">↕ <span>Remove Space After Paragraph</span></button>
+        </div>
+        <div class="paragraph-menu underline-menu" id="underline-menu" role="group" aria-label="Underline options" hidden>
+          <strong>Underline style</strong>
+          <div class="underline-options">
+            <button type="button" data-underline-style="solid" aria-label="Single underline"><span class="underline-preview">Single</span><i></i></button>
+            <button type="button" data-underline-style="double" aria-label="Double underline"><span class="underline-preview underline-double">Double</span><i></i></button>
+            <button type="button" data-underline-style="dotted" aria-label="Dotted underline"><span class="underline-preview underline-dotted">Dotted</span><i></i></button>
+            <button type="button" data-underline-style="dashed" aria-label="Dashed underline"><span class="underline-preview underline-dashed">Dashed</span><i></i></button>
+            <button type="button" data-underline-style="wavy" aria-label="Wavy underline"><span class="underline-preview underline-wavy">Wavy</span><i></i></button>
+            <button type="button" data-underline-style="none" aria-label="Remove underline">None</button>
+          </div>
+          <div class="underline-color-option"><span>Underline Color</span><div class="color-picker" data-color-picker="underline"><button class="color-tool underline-color-tool" type="button" aria-label="Underline color" title="Underline color"><span></span></button><div class="color-palette" role="group" aria-label="Underline color palette"><label class="more-colors">More colors<input id="underline-color" type="color" value="#26334a" aria-label="More underline colors"></label></div></div></div>
         </div>
       </div>
       <div class="ribbon-group editing-group"><button class="ribbon-action" id="find-button" type="button"><img src="assets/Media/find-search-secure-svgrepo-com.svg" alt=""><span>Find</span></button><button class="ribbon-action" id="replace-button" type="button"><img src="assets/Media/search-and-replace-svgrepo-com.svg" alt=""><span>Replace</span></button><span class="group-caption">Editing</span></div>
@@ -207,7 +228,7 @@
             <label>Rows <input id="table-create-rows" type="number" min="1" max="20" value="5"></label>
             <label>Columns <input id="table-create-columns" type="number" min="1" max="20" value="5"></label>
             <label>Cell width <input id="table-create-width" type="number" min="40" max="240" step="5" value="125"> px</label>
-            <label>Cell height <input id="table-create-height" type="number" min="12" max="120" step="2" value="24"> px</label>
+            <label>Cell height <input id="table-create-height" type="number" min="20" max="120" step="2" value="20"> px</label>
             <button id="table-create-button" class="table-create-button" type="button">Insert table</button>
           </div>
         </div>
@@ -251,8 +272,30 @@
           </label>
           <button class="insert-menu-link" id="remove-page-numbers" type="button">Remove Page Numbers</button>
         </div>
-        <button class="insert-action" id="header-insert-button" type="button" aria-pressed="false" title="Insert header"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Header</span></button>
-        <button class="insert-action footer-insert-action" id="footer-insert-button" type="button" aria-pressed="false" title="Insert footer"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Footer</span></button>
+        <button class="insert-action" id="header-insert-button" type="button" title="Header templates" aria-haspopup="dialog" aria-expanded="false" aria-controls="header-template-menu"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Header</span></button>
+        <button class="insert-action footer-insert-action" id="footer-insert-button" type="button" title="Footer templates" aria-haspopup="dialog" aria-expanded="false" aria-controls="footer-template-menu"><img src="assets/Media/header-svgrepo-com.svg" alt=""><span>Footer</span></button>
+        <div id="header-template-menu" class="insert-menu document-region-menu" role="dialog" aria-label="Header templates" data-document-region="header" hidden>
+          <strong>Built-in headers</strong>
+          <div class="document-region-templates">
+            <button type="button" class="document-region-template" data-document-template="blank"><span class="document-region-preview"><i>Type here</i></span><span>Blank</span></button>
+            <button type="button" class="document-region-template" data-document-template="three-columns"><span class="document-region-preview three-columns"><i>Text</i><i>Text</i><i>Text</i></span><span>Blank (Three Columns)</span></button>
+            <button type="button" class="document-region-template" data-document-template="austin"><span class="document-region-preview austin"><i>Document title</i></span><span>Austin</span></button>
+            <button type="button" class="document-region-template" data-document-template="banded"><span class="document-region-preview banded"><i>Document title</i></span><span>Banded</span></button>
+          </div>
+          <button type="button" class="insert-menu-link" data-document-region-action="edit">Edit Header</button>
+          <button type="button" class="insert-menu-link" data-document-region-action="remove">Remove Header</button>
+        </div>
+        <div id="footer-template-menu" class="insert-menu document-region-menu" role="dialog" aria-label="Footer templates" data-document-region="footer" hidden>
+          <strong>Built-in footers</strong>
+          <div class="document-region-templates">
+            <button type="button" class="document-region-template" data-document-template="blank"><span class="document-region-preview"><i>Type here</i></span><span>Blank</span></button>
+            <button type="button" class="document-region-template" data-document-template="three-columns"><span class="document-region-preview three-columns"><i>Text</i><i>Text</i><i>Text</i></span><span>Blank (Three Columns)</span></button>
+            <button type="button" class="document-region-template" data-document-template="austin"><span class="document-region-preview footer-austin"><i>Pg. 1</i></span><span>Austin</span></button>
+            <button type="button" class="document-region-template" data-document-template="banded"><span class="document-region-preview footer-banded"><i>1</i></span><span>Banded</span></button>
+          </div>
+          <button type="button" class="insert-menu-link" data-document-region-action="edit">Edit Footer</button>
+          <button type="button" class="insert-menu-link" data-document-region-action="remove">Remove Footer</button>
+        </div>
       </div>
       <div class="ribbon-group insert-group insert-ribbon-group insert-menu-group">
         <button class="insert-action" id="emoji-button" type="button" aria-expanded="false" aria-controls="emoji-menu"><img src="assets/Media/emoji-funny-circle-svgrepo-com.svg" alt=""><span>Emoji</span></button>
@@ -348,8 +391,8 @@
             <span class="page-size-copy"><strong>A5</strong><small>5.83″ × 8.27″</small></span>
           </button>
           <div class="layout-custom-fields layout-custom-size">
-            <label>Width <input id="page-width-input" type="number" min="4" max="20" step="0.1" value="8.27"> in</label>
-            <label>Height <input id="page-height-input" type="number" min="4" max="20" step="0.1" value="11.69"> in</label>
+            <label>Width <input id="page-width-input" type="number" min="4" max="20" step="0.01" value="8.267717"> in</label>
+            <label>Height <input id="page-height-input" type="number" min="4" max="20" step="0.01" value="11.692913"> in</label>
           </div>
           <button type="button" class="layout-menu-primary" id="apply-custom-size">Apply custom size</button>
         </div>
@@ -461,6 +504,93 @@
         <span class="group-caption">Cell size</span>
       </div>
     </div>
+    <div class="ribbon-panel" data-panel="shape-format">
+      <div class="ribbon-group shape-format-styles" aria-label="Shape styles">
+        <div class="shape-style-presets" role="group" aria-label="Choose a shape style">
+          <button type="button" data-shape-style="light" aria-label="Light shape style"><span>Abc</span></button>
+          <button type="button" data-shape-style="dark" aria-label="Dark shape style"><span>Abc</span></button>
+          <button type="button" data-shape-style="blue" aria-label="Blue shape style"><span>Abc</span></button>
+        </div>
+        <div class="shape-format-colors" role="group" aria-label="Shape colors">
+          <div class="color-picker color-input-picker shape-palette-picker" data-color-picker="input">
+            <button type="button" class="color-tool shape-palette-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Shape fill color">
+              <span class="shape-palette-indicator" data-shape-color-swatch="fill" style="background-color:#dce8f5"></span><b>Shape Fill</b><i aria-hidden="true">▾</i>
+            </button>
+            <div class="color-palette" role="group" aria-label="Shape fill color palette">
+              <label class="more-colors">Custom color<input id="shape-ribbon-fill" type="color" value="#dce8f5" aria-label="More shape fill colors"></label>
+            </div>
+          </div>
+          <div class="color-picker color-input-picker shape-palette-picker" data-color-picker="input">
+            <button type="button" class="color-tool shape-palette-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Shape outline color">
+              <span class="shape-palette-indicator" data-shape-color-swatch="outline" style="background-color:#176b9a"></span><b>Shape Outline</b><i aria-hidden="true">▾</i>
+            </button>
+            <div class="color-palette" role="group" aria-label="Shape outline color palette">
+              <label class="more-colors">Custom color<input id="shape-ribbon-outline" type="color" value="#176b9a" aria-label="More shape outline colors"></label>
+            </div>
+          </div>
+          <label class="shape-outline-width-control">
+            Border <input id="shape-ribbon-outline-width" type="number" min="0" max="100" step="0.5" value="2" aria-label="Shape border width in pixels">
+            <span>px</span>
+          </label>
+          <label class="shape-effect-toggle"><input id="shape-ribbon-shadow" type="checkbox"> Shadow</label>
+        </div>
+      </div>
+      <div class="ribbon-group shape-format-wordart" aria-label="WordArt text styles">
+        <div class="shape-text-style-gallery" role="group" aria-label="Choose a text style">
+          <button type="button" data-shape-text-style="normal" aria-label="Plain text style"><span>A</span></button>
+          <button type="button" data-shape-text-style="accent" aria-label="Accent text style"><span>A</span></button>
+          <button type="button" data-shape-text-style="shadow" aria-label="Shadow text style"><span>A</span></button>
+        </div>
+        <div class="color-picker color-input-picker shape-palette-picker" data-color-picker="input">
+          <button type="button" class="color-tool shape-palette-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Shape text color">
+            <span class="shape-palette-indicator" data-shape-color-swatch="text" style="background-color:#202124"></span><b>Text Color</b><i aria-hidden="true">▾</i>
+          </button>
+          <div class="color-palette" role="group" aria-label="Shape text color palette">
+            <label class="more-colors">Custom color<input id="shape-ribbon-text-color" type="color" value="#202124" aria-label="More shape text colors"></label>
+          </div>
+        </div>
+      </div>
+      <div class="ribbon-group shape-format-delete-group" aria-label="Delete shape">
+        <button type="button" id="shape-ribbon-delete" class="shape-format-delete">Delete shape</button>
+      </div>
+    </div>
+    <div class="ribbon-panel" data-panel="picture-format">
+      <div class="ribbon-group picture-format-group" aria-label="Picture actions">
+        <div class="picture-format-actions" role="group" aria-label="Crop and delete picture">
+          <button id="image-crop-toggle" class="image-icon-button" type="button" aria-pressed="false" title="Crop picture" aria-label="Crop picture">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 2v12a2 2 0 0 0 2 2h10M2 6h12a2 2 0 0 1 2 2v10M8 8h4v4"/></svg>
+            <span>Crop</span>
+          </button>
+          <button id="image-crop-reset" class="image-icon-button" type="button" title="Reset crop" aria-label="Reset crop" hidden>
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12v11H4zM7 8l6 5m0-5-6 5M6 2 3 5l3 3"/></svg>
+            <span>Reset</span>
+          </button>
+          <button id="image-delete" class="image-icon-button image-delete-action" type="button" title="Delete picture" aria-label="Delete picture">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2m3 0-.8 12H5.8L5 5m3 3v6m4-6v6"/></svg>
+            <span>Delete</span>
+          </button>
+        </div>
+      </div>
+      <div class="ribbon-group picture-format-group" aria-label="Picture border">
+        <div class="color-picker image-border-picker picture-border-picker" data-color-picker="image-border">
+          <button class="color-tool image-border-color-tool picture-color-trigger" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Picture border color" title="Picture border color">
+            <img src="assets/Media/color-background-svgrepo-com.svg" alt=""><span></span><b>Picture Border</b><i aria-hidden="true">▾</i>
+          </button>
+          <div class="color-palette" role="group" aria-label="Picture border color palette">
+            <label class="more-colors">Custom color<input id="image-border-color" type="color" value="#176b9a" aria-label="More picture border colors"></label>
+          </div>
+        </div>
+        <label class="picture-border-width-control">Width <input id="image-border-width" type="number" min="0" max="100" step="0.5" value="0" aria-label="Picture border width in pixels"><span>px</span></label>
+      </div>
+      <div class="ribbon-group picture-format-group" aria-label="Picture shape and opacity">
+        <label class="picture-range-control">Corners <input id="image-radius" type="range" min="0" max="50" step="2" value="0" aria-label="Picture corner radius"><output id="image-radius-value">0 px</output></label>
+        <label class="picture-range-control">Transparency <input id="image-opacity" type="range" min="0" max="100" step="5" value="100" aria-label="Picture opacity"><output id="image-opacity-value">100%</output></label>
+      </div>
+      <div class="ribbon-group picture-format-group" aria-label="Picture layer order">
+        <button type="button" class="picture-layer-action" data-object-layer="1">Bring forward</button>
+        <button type="button" class="picture-layer-action" data-object-layer="-1">Send backward</button>
+      </div>
+    </div>
   </section>
     <button id="tools-toggle" class="bar-toggle tools-toggle" type="button" aria-label="Hide tools bar" aria-expanded="true" title="Hide tools bar">
       <img src="assets/Media/down-arrow-5-svgrepo-com.svg" alt="">
@@ -478,7 +608,6 @@
         <div class="keyboard-layout" data-keyboard-panel="urdu">
           <div class="keyboard-heading-row">
             <div class="keyboard-heading">Urdu keyboard</div>
-            <button id="phonetic-shift-toggle" class="phonetic-shift-toggle" type="button" aria-label="Shift Urdu keyboard" aria-pressed="false">Shift</button>
           </div>
           <div id="phonetic-keyboard" class="phonetic-keyboard" aria-label="Urdu phonetic keyboard"></div>
         </div>
@@ -501,6 +630,7 @@
         <div class="keyboard-controls" dir="ltr">
           <button type="button" data-onscreen-key="Backspace" aria-label="Backspace">⌫</button>
           <button type="button" data-onscreen-key=" ">Space</button>
+          <button id="phonetic-shift-toggle" class="phonetic-shift-toggle" type="button" aria-label="Shift Urdu keyboard" aria-pressed="false">Shift</button>
           <button type="button" data-onscreen-key="Enter" aria-label="New line">↵</button>
         </div>
       </section>
@@ -542,6 +672,18 @@
   </main>
   <div id="word-suggestions" class="word-suggestions" role="listbox" aria-label="Urdu word suggestions" hidden></div>
 
+  <nav id="mobile-action-bar" class="mobile-action-bar" aria-label="Quick editing actions" dir="ltr">
+    <button id="mobile-undo" type="button" aria-label="Undo" title="Undo">↶<span>Undo</span></button>
+    <button id="mobile-redo" type="button" aria-label="Redo" title="Redo">↷<span>Redo</span></button>
+    <button id="mobile-keyboard-toggle" type="button" aria-label="Toggle Urdu keyboard" aria-pressed="false" title="Urdu keyboard">⌨<span>Keyboard</span></button>
+    <div class="mobile-zoom-controls" aria-label="Zoom controls">
+      <button id="mobile-zoom-out" type="button" aria-label="Zoom out">−</button>
+      <span id="mobile-zoom-label">100%</span>
+      <button id="mobile-zoom-in" type="button" aria-label="Zoom in">+</button>
+    </div>
+    <span class="mobile-page-count" aria-live="polite">Page <b id="mobile-page-number">1</b>/<b id="mobile-page-total">1</b></span>
+  </nav>
+
   <footer class="status-bar" dir="ltr">
     <div class="status-left"><span>Page <b id="page-number">1</b> of <b id="page-total">1</b></span><span id="word-count">0 words</span><span id="character-count">0 characters</span><span id="language-status">Urdu (Pakistan)</span></div>
     <div class="status-right"><span>Editor: <b id="typing-status">Urdu keyboard</b></span><button id="status-zoom-out" type="button">−</button><input id="status-zoom-range" type="range" min="70" max="130" value="100" aria-label="Zoom"><button id="status-zoom-in" type="button">+</button><span id="status-zoom-label">100%</span><button class="status-fit" type="button">Fit</button></div>
@@ -569,7 +711,7 @@
     <button type="button" data-table-action="shade-cell">Apply</button>
     <label>Border color <input id="table-border-color" type="color" value="#aeb6c5"></label>
     <label>Border width <input id="table-border-width" type="number" min="0" max="8" step="1" value="1"> px</label>
-    <label>Cell padding <input id="table-cell-padding" type="range" min="0" max="24" step="1" value="3"><output id="table-cell-padding-value">3 px</output></label>
+    <label>Horizontal padding <input id="table-cell-padding" type="range" min="0" max="24" step="1" value="4"><output id="table-cell-padding-value">4 px</output></label>
     <label>Text
       <select id="table-cell-align"><option value="right">Right</option><option value="center">Center</option><option value="left">Left</option></select>
     </label>
@@ -610,43 +752,15 @@
     </div>
     <div class="shape-toolbar-row shape-toolbar-line-row">
       <label>Stroke <input id="shape-line-color" type="color" value="#176b9a" aria-label="Shape stroke color"></label>
-      <label class="shape-line-width-control">Width <input id="shape-line-width" type="range" min="0" max="10" step="1" value="2" aria-label="Shape stroke width"><output id="shape-line-width-value">2 px</output></label>
+      <label class="shape-line-width-control">Width <input id="shape-line-width" type="number" min="0" max="100" step="0.5" value="2" aria-label="Shape stroke width in pixels"><span>px</span></label>
     </div>
     <div class="textbox-border-control"><button id="textbox-border-toggle" type="button" aria-pressed="true">Remove border</button></div>
     <label>Opacity <input id="shape-opacity" type="range" min="10" max="100" step="5" value="100"><output id="shape-opacity-value">100%</output></label>
     <label>Text <input id="shape-text" type="text" maxlength="120" placeholder="Add text to shape" aria-label="Text inside shape"></label>
   </div>
   <div id="image-rotation-indicator" class="image-rotation-indicator" role="status" aria-live="polite" hidden></div>
-  <div id="watermark-manipulators" class="image-manipulators" aria-label="Watermark resize controls" hidden></div>
-  <div id="image-context-toolbar" class="context-toolbar image-context-toolbar" role="toolbar" aria-label="Picture formatting" hidden>
-    <strong>Picture</strong>
-    <div class="image-action-row object-layer-actions" role="group" aria-label="Picture layer order">
-      <button type="button" data-object-layer="1">Bring forward</button>
-      <button type="button" data-object-layer="-1">Send backward</button>
-    </div>
-    <div class="image-action-row" role="group" aria-label="Crop and delete picture">
-      <button id="image-crop-toggle" class="image-icon-button" type="button" aria-pressed="false" title="Crop picture" aria-label="Crop picture">
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 2v12a2 2 0 0 0 2 2h10M2 6h12a2 2 0 0 1 2 2v10M8 8h4v4"/></svg>
-      </button>
-      <button id="image-crop-reset" class="image-icon-button" type="button" title="Reset crop" aria-label="Reset crop" hidden>
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12v11H4zM7 8l6 5m0-5-6 5M6 2 3 5l3 3"/></svg>
-      </button>
-      <button id="image-delete" class="image-icon-button image-delete-action" type="button" title="Delete picture" aria-label="Delete picture">
-        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M8 5V3h4v2m3 0-.8 12H5.8L5 5m3 3v6m4-6v6"/></svg>
-      </button>
-    </div>
-    <div class="color-picker image-border-picker" data-color-picker="image-border">
-      <button class="color-tool image-border-color-tool" type="button" aria-label="Picture border color" title="Picture border color">
-        <img src="assets/Media/color-background-svgrepo-com.svg" alt=""><span></span>
-      </button>
-      <div class="color-palette" role="group" aria-label="Picture border color palette">
-        <label class="more-colors">More colors<input id="image-border-color" type="color" value="#176b9a" aria-label="More picture border colors"></label>
-      </div>
-    </div>
-    <label>Border width <input id="image-border-width" type="range" min="0" max="10" step="1" value="0"><output id="image-border-width-value">0 px</output></label>
-    <label>Corner radius <input id="image-radius" type="range" min="0" max="50" step="2" value="0"><output id="image-radius-value">0 px</output></label>
-    <label>Opacity <input id="image-opacity" type="range" min="0" max="100" step="5" value="100"><output id="image-opacity-value">100%</output></label>
-  </div>
+  <div id="watermark-manipulators" class="image-manipulators" aria-label="Watermark controls" hidden></div>
+  <div id="image-context-toolbar" class="context-toolbar image-context-toolbar" role="toolbar" aria-label="Picture formatting" hidden></div>
   <dialog id="watermark-dialog" class="watermark-dialog" aria-labelledby="watermark-dialog-title">
     <form method="dialog"><button class="shortcuts-close" aria-label="Close watermark dialog">×</button></form>
     <h2 id="watermark-dialog-title">Insert Watermark</h2>
@@ -675,12 +789,18 @@
     </div>
   </dialog>
   <div id="watermark-context-toolbar" class="context-toolbar watermark-context-toolbar" role="toolbar" aria-label="Watermark formatting" hidden>
-    <strong>Watermark</strong>
-    <label id="watermark-edit-text-field">Text <input id="watermark-edit-text" type="text" maxlength="80"></label>
-    <label>Opacity <input id="watermark-edit-opacity" type="range" min="5" max="100" step="5" value="25"><output id="watermark-edit-opacity-value">25%</output></label>
-    <label id="watermark-edit-width-field">Width <input id="watermark-edit-width" type="range" min="40" max="2000" step="10" value="240"><output id="watermark-edit-width-value">240 px</output></label>
-    <label>Rotation <input id="watermark-edit-rotation" type="range" min="0" max="359" step="1" value="0"><output id="watermark-edit-rotation-value">0°</output></label>
-    <button id="watermark-delete" type="button">Delete watermark</button>
+    <div class="watermark-edit-panel" data-watermark-edit-panel hidden>
+      <label id="watermark-edit-text-field" aria-label="Watermark text">
+        <input id="watermark-edit-text" type="text" maxlength="80" aria-label="Watermark text">
+      </label>
+      <label class="watermark-opacity-field">Opacity
+        <input id="watermark-edit-opacity" type="range" min="5" max="100" step="5" value="25">
+        <output id="watermark-edit-opacity-value">25%</output>
+      </label>
+      <button id="watermark-delete" class="watermark-delete-icon" type="button" aria-label="Delete watermark" title="Delete watermark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m3 3v7m6-7v7"/></svg>
+      </button>
+    </div>
   </div>
   <dialog id="shortcuts-dialog" class="shortcuts-dialog" aria-labelledby="shortcuts-title">
     <form method="dialog"><button class="shortcuts-close" aria-label="Close keyboard shortcuts">×</button></form>

@@ -8,6 +8,13 @@
   const RECOVERY_KEY_PREFIX = 'urdu-writer-recovery-v1-';
   let activeDocumentId = '';
   let alignmentGuides = [];
+  let documentHistoryManager = null;
+  let historyCheckpointTimer = 0;
+  let pendingHistoryAction = '';
+  let pendingHistoryGroupKey = null;
+  let pendingHistoryActionExpiresAt = 0;
+  let activePointerHistoryAction = null;
+  let isRestoringHistory = false;
   let saveTimer;
   let recoveryTimer = 0;
   let paginationFrame = 0;
@@ -16,8 +23,10 @@
   let landscape = false;
   let pageSize = 'A4';
   let customPageDimensions = null;
+  let pageMargins = [1, 1, 1, 1];
   let pageBorderStyle = 'none';
   let pageBorderColor = '#697586';
+  let pageColor = '#ffffff';
   let toastTimer;
   let savedEditorRange = null;
   let lastFormattedSpan = null;
@@ -50,7 +59,9 @@
     'curved-arrow', 'u-turn-arrow', 'elbow-connector', 'pie', 'rectangular-callout',
     'rounded-rectangle-callout', 'oval-callout', 'cloud-callout', 'sun',
     'lightning-bolt', 'flow-document', 'flow-preparation', 'flow-delay', 'ribbon',
-    'wave-banner'
+    'wave-banner',
+    ...window.WordShapesEngine.categories.flatMap(({ shapes }) =>
+      shapes.filter(({ geometry }) => geometry === 'polygon').map(({ type }) => type))
   ]);
   const allowedTags = new Set([
     'A', 'B', 'BLOCKQUOTE', 'BR', 'DIV', 'EM', 'FONT', 'H1', 'H2', 'H3', 'H4',
@@ -99,6 +110,10 @@
           clean.dataset.textboxManualWidth = 'true';
         } else if (name === 'data-shape-label' && node.tagName === 'SPAN' && value === 'true') {
           clean.dataset.shapeLabel = 'true';
+        } else if (name === 'data-shape-text-style' && node.tagName === 'SPAN' && ['accent', 'shadow'].includes(value)) {
+          clean.dataset.shapeTextStyle = value;
+        } else if (name === 'data-shape-text-color' && node.tagName === 'SPAN' && /^#[\da-f]{6}$/i.test(value)) {
+          clean.dataset.shapeTextColor = value;
         } else if (name === 'data-shape-geometry' && node.tagName === 'DIV' && ['basic', 'polygon'].includes(value)) {
           clean.dataset.shapeGeometry = value;
         } else if (name === 'data-shape-type' && node.tagName === 'DIV' &&
@@ -108,10 +123,22 @@
           clean.dataset.shapeFill = value;
         } else if (name === 'data-shape-line' && node.tagName === 'DIV' && /^#[\da-f]{6}$/i.test(value)) {
           clean.dataset.shapeLine = value;
-        } else if (name === 'data-shape-line-width' && node.tagName === 'DIV' && /^(?:[0-9]|10)$/.test(value)) {
+        } else if (name === 'data-shape-line-width' && node.tagName === 'DIV' &&
+          Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 100) {
           clean.dataset.shapeLineWidth = value;
         } else if (name === 'data-shape-opacity' && node.tagName === 'DIV' && /^(?:10|[1-9]\d|100)$/.test(value)) {
           clean.dataset.shapeOpacity = value;
+        } else if (name === 'data-shape-text-align' && node.tagName === 'DIV' &&
+          ['left', 'center', 'right', 'justify'].includes(value)) {
+          clean.dataset.shapeTextAlign = value;
+        } else if (name === 'data-shape-text-vertical' && node.tagName === 'DIV' &&
+          ['top', 'middle', 'bottom'].includes(value)) {
+          clean.dataset.shapeTextVertical = value;
+        } else if (name === 'data-shape-text-direction' && node.tagName === 'DIV' &&
+          ['auto', 'rtl', 'ltr'].includes(value)) {
+          clean.dataset.shapeTextDirection = value;
+        } else if (name === 'data-shape-shadow' && node.tagName === 'DIV' && ['true', 'false'].includes(value)) {
+          clean.dataset.shapeShadow = value;
         } else if (name === 'data-shape-rotation' && node.tagName === 'DIV' && /^(?:0|[1-9]\d?|[12]\d\d|3[0-5]\d)$/.test(value)) {
           clean.dataset.shapeRotation = value;
         } else if (name === 'class' && node.tagName === 'DIV' && documentRegion &&
@@ -119,6 +146,9 @@
           clean.className = `document-${documentRegion}`;
         } else if (name === 'data-document-region' && node.tagName === 'DIV' && value === documentRegion) {
           clean.dataset.documentRegion = value;
+        } else if (name === 'data-template' && node.tagName === 'DIV' && documentRegion &&
+          ['blank', 'three-columns', 'austin', 'banded'].includes(value)) {
+          clean.dataset.template = value;
         } else if (name === 'data-document-alignment' && node.tagName === 'DIV' && documentRegion &&
           ['left', 'center', 'right'].includes(value)) {
           clean.dataset.documentAlignment = value;
@@ -150,6 +180,11 @@
         } else if (name === 'data-watermark-rotation' && ['DIV', 'IMG'].includes(node.tagName) &&
           /^(?:0|[1-9]\d?|[12]\d\d|3[0-5]\d)$/.test(value)) {
           clean.dataset.watermarkRotation = value;
+        } else if (name === 'data-watermark-locked' && ['DIV', 'IMG'].includes(node.tagName) && value === 'true') {
+          clean.dataset.watermarkLocked = 'true';
+        } else if (name === 'data-watermark-centered' &&
+          ['DIV', 'IMG'].includes(node.tagName) && value === 'true') {
+          clean.dataset.watermarkCentered = 'true';
         } else if (name === 'contenteditable' && value === 'false' &&
           (node.classList.contains('page-break') || node.classList.contains('column-break') || node.classList.contains('editor-shape') ||
             isPageNumberField || documentRegion ||
@@ -197,7 +232,8 @@
           clean.dataset.imageRotation = value;
         } else if (name === 'data-image-border-color' && node.tagName === 'IMG' && /^#[\da-f]{6}$/i.test(value)) {
           clean.dataset.imageBorderColor = value;
-        } else if (name === 'data-image-border-width' && node.tagName === 'IMG' && /^(?:[0-9]|10)$/.test(value)) {
+        } else if (name === 'data-image-border-width' && node.tagName === 'IMG' &&
+          Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 100) {
           clean.dataset.imageBorderWidth = value;
         } else if (name === 'data-image-radius' && node.tagName === 'IMG' && /^(?:[0-9]|[1-4]\d|50)$/.test(value)) {
           clean.dataset.imageRadius = value;
@@ -239,7 +275,7 @@
           clean.dataset.layer = value;
         } else if (name === 'style') {
           const styles = [];
-          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'border-color', 'border-width', 'position', 'width', 'height', 'left', 'top', 'opacity', 'z-index', 'table-layout']) {
+          for (const property of ['font-family', 'font-size', 'font-weight', 'font-style', 'text-decoration', 'text-decoration-style', 'text-decoration-color', 'text-align', 'vertical-align', 'direction', 'list-style-type', 'line-height', 'margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start', 'padding', 'color', 'background-color', 'border-color', 'border-width', 'position', 'width', 'height', 'left', 'top', 'opacity', 'z-index', 'table-layout']) {
             const styleValue = node.style.getPropertyValue(property).trim();
             if (!styleValue) continue;
             if (property === 'font-family' && fontFamilies.includes(styleValue)) styles.push(`${property}:${styleValue}`);
@@ -259,8 +295,16 @@
                   node.dataset.watermark === 'image') ||
                 node.tagName === 'DIV' && (node.dataset.watermark === 'text' ||
                   node.dataset.editorShape === 'true')) &&
-              /^\d+(?:\.\d{1,4})?px$/.test(styleValue) &&
-              Number.parseFloat(styleValue) <= 10000) styles.push(`${property}:${styleValue}`);
+              (/^\d+(?:\.\d{1,4})?px$/.test(styleValue) &&
+                Number.parseFloat(styleValue) <= 10000 ||
+                property === 'left' && ['text', 'image'].includes(node.dataset.watermark) &&
+                  styleValue === '50%')) {
+              styles.push(`${property}:${styleValue}`);
+              if (property === 'left' && styleValue === '50%' &&
+                ['text', 'image'].includes(node.dataset.watermark)) {
+                clean.dataset.watermarkCentered = 'true';
+              }
+            }
             if (property === 'border-color' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
               /^#[\da-f]{6}$/i.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'border-width' && node.tagName === 'DIV' && node.dataset.editorShape === 'true' &&
@@ -283,13 +327,15 @@
             if (property === 'font-weight' && /^(?:normal|bold|[1-9]00)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'font-style' && /^(?:normal|italic|oblique)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'text-decoration' && /^(?:none|underline|line-through|overline)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'text-decoration-style' && /^(?:solid|double|dotted|dashed|wavy)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (property === 'text-decoration-color' && CSS.supports('color', styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'text-align' && /^(?:left|right|center|justify)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'vertical-align' && ['TD', 'TH'].includes(node.tagName) && /^(?:top|middle|bottom)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'padding' && ['TD', 'TH'].includes(node.tagName) && /^(?:\d{1,2}px)(?: \d{1,2}px){0,3}$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'direction' && /^(?:ltr|rtl)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'list-style-type' && /^(?:disc|circle|square|decimal|upper-roman|lower-roman|upper-alpha|lower-alpha|decimal-paren|upper-roman-paren|lower-roman-paren|upper-alpha-paren|lower-alpha-paren|decimal-bracket|upper-roman-bracket|lower-roman-bracket|upper-alpha-bracket|lower-alpha-bracket|"(?:•|○|▪|▫|★|➜|\\+|−|♦|♢|❖|➤|☻|☹|✓|✗|□)")$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'line-height' && /^(?:\d+(?:\.\d+)?|normal)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
-            if (['margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start'].includes(property) && /^-?\d+(?:\.\d+)?(?:px|em|rem|%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
+            if (['margin-top', 'margin-bottom', 'text-indent', 'padding-inline-start'].includes(property) && /^-?\d+(?:\.\d+)?(?:px|pt|em|rem|%)$/.test(styleValue)) styles.push(`${property}:${styleValue}`);
             if (['color', 'background-color'].includes(property) && CSS.supports('color', styleValue)) styles.push(`${property}:${styleValue}`);
             if (property === 'background-color' && node.tagName === 'SPAN' && CSS.supports('color', styleValue)) {
               styles.push(`--text-highlight-color:${styleValue}`);
@@ -305,17 +351,20 @@
           clean.style.removeProperty('left');
           clean.style.removeProperty('top');
         }
-        if (['DIV', 'IMG'].includes(clean.tagName) && clean.dataset.watermarkOpacity) {
-          clean.style.opacity = clean.dataset.watermarkOpacity;
-        }
         if (clean.dataset.borderWidth) clean.style.setProperty('--table-border-width', `${clean.dataset.borderWidth}px`);
         if (clean.dataset.borderColor) clean.style.setProperty('--table-border-color', clean.dataset.borderColor);
+      }
+      if (['DIV', 'IMG'].includes(clean.tagName) && clean.dataset.watermarkOpacity) {
+        clean.style.opacity = clean.dataset.watermarkOpacity;
       }
       if (clean.tagName === 'DIV' && clean.dataset.editorShape === 'true') {
         const fill = clean.dataset.shapeFill || '#dce8f5';
         const line = clean.dataset.shapeLine || '#176b9a';
         const lineWidth = clean.dataset.shapeLineWidth ?? 2;
-        clean.dataset.shapeGeometry = polygonShapeTypes.has(clean.dataset.shapeType) ? 'polygon' : 'basic';
+        const shapeDefinition = window.WordShapesEngine.get(clean.dataset.shapeType);
+        clean.dataset.shapeGeometry = shapeDefinition?.geometry ||
+          (polygonShapeTypes.has(clean.dataset.shapeType) ? 'polygon' : 'basic');
+        if (shapeDefinition) window.WordShapesEngine.applyGeometry(clean, clean.dataset.shapeType);
         clean.style.backgroundColor = clean.dataset.shapeGeometry === 'polygon' || clean.dataset.shapeType === 'line'
           ? line
           : fill;
@@ -325,14 +374,20 @@
         clean.style.setProperty('--shape-fill-color', fill);
         clean.style.setProperty('--shape-border-width', `${lineWidth}px`);
         clean.style.opacity = String(Number(clean.dataset.shapeOpacity ?? 100) / 100);
+        clean.setAttribute('dir', clean.dataset.shapeTextDirection || 'auto');
         const rotation = Number(clean.dataset.shapeRotation || 0);
         if (rotation) clean.style.rotate = `${rotation}deg`;
       }
       if (['DIV', 'IMG'].includes(clean.tagName) && clean.dataset.watermark) {
+        clean.tabIndex = 0;
+        clean.setAttribute('role', 'button');
+        clean.setAttribute('aria-label',
+          `${clean.dataset.watermark === 'image' ? 'Image' : 'Text'} watermark. Press Enter to open controls.`);
         const rotation = Number(clean.dataset.watermarkRotation) || 0;
         if (rotation) clean.style.rotate = `${rotation}deg`;
       }
       if (clean.tagName === 'IMG') {
+        clean.setAttribute('contenteditable', 'false');
         const rotation = Number(clean.dataset.imageRotation || 0);
         if (rotation) clean.style.rotate = `${rotation}deg`;
         const borderWidth = Number(clean.dataset.imageBorderWidth || 0);
@@ -372,8 +427,10 @@
     const characters = Array.from(text).length;
     document.getElementById('word-count').textContent = `${words} words`;
     document.getElementById('character-count').textContent = `${characters} characters`;
+    document.getElementById('mobile-page-number').textContent = document.getElementById('page-number').textContent;
     const pages = Math.max(1, editor.querySelectorAll('.page-break').length + 1);
     document.getElementById('page-total').textContent = String(pages);
+    document.getElementById('mobile-page-total').textContent = String(pages);
     updatePageNumberFields(pages);
     syncPageNumberPrintLocation();
   }
@@ -385,11 +442,13 @@
     const hasHeader = Boolean(editor.querySelector('.document-header'));
     const hasFooter = Boolean(editor.querySelector('.document-footer'));
     headerButton.setAttribute('aria-pressed', String(hasHeader));
-    headerButton.title = hasHeader ? 'Remove header' : 'Insert header';
-    headerButton.querySelector('span').textContent = hasHeader ? 'Remove Header' : 'Header';
+    headerButton.title = 'Header templates';
+    headerButton.querySelector('span').textContent = 'Header';
     footerButton.setAttribute('aria-pressed', String(hasFooter));
-    footerButton.title = hasFooter ? 'Remove footer' : 'Insert footer';
-    footerButton.querySelector('span').textContent = hasFooter ? 'Remove Footer' : 'Footer';
+    footerButton.title = 'Footer templates';
+    footerButton.querySelector('span').textContent = 'Footer';
+    document.querySelector('#header-template-menu [data-document-region-action="remove"]').disabled = !hasHeader;
+    document.querySelector('#footer-template-menu [data-document-region-action="remove"]').disabled = !hasFooter;
     const savedMarginTop = Number.parseFloat(editor.style.getPropertyValue('--document-margin-top'));
     const currentPaddingTop = rulerPixels(getComputedStyle(editor).paddingTop);
     editor.classList.toggle('has-document-header', Boolean(header));
@@ -631,7 +690,7 @@
     syncPageBreakLayout();
     updateCounts(false);
     syncRulers();
-    scheduleSave();
+    scheduleSave('', null, false);
   }
 
   function queueAutoPagination() {
@@ -890,6 +949,7 @@
   function syncZoomControls() {
     ['zoom-range', 'status-zoom-range'].forEach((id) => { document.getElementById(id).value = String(zoom); });
     ['zoom-label', 'status-zoom-label'].forEach((id) => { document.getElementById(id).textContent = `${zoom}%`; });
+    document.getElementById('mobile-zoom-label').textContent = `${zoom}%`;
     editor.style.transform = `scale(${zoom / 100})`;
     editor.style.marginBottom = `${(zoom / 100 - 1) * editor.scrollHeight}px`;
     if (!marginGuides.hidden) marginGuides.style.transform = `scale(${zoom / 100})`;
@@ -903,28 +963,32 @@
   const documentStage = document.querySelector('.document-stage');
   const landscapeScrollbar = document.getElementById('landscape-scrollbar');
 
+  function syncHorizontalRulerScroll() {
+    horizontalRuler.style.transform = `translateX(${-documentStage.scrollLeft}px)`;
+  }
+
   function syncLandscapeScrollbar() {
     const shouldShow = document.body.classList.contains('landscape-page') &&
       document.body.classList.contains('landscape-keyboard-open') &&
       documentStage.scrollWidth > documentStage.clientWidth + 1;
     landscapeScrollbar.hidden = !shouldShow;
+    syncHorizontalRulerScroll();
     if (!shouldShow) return;
     landscapeScrollbar.firstElementChild.style.width = `${documentStage.scrollWidth}px`;
     if (landscapeScrollbar.scrollLeft !== documentStage.scrollLeft) {
       landscapeScrollbar.scrollLeft = documentStage.scrollLeft;
     }
-    horizontalRuler.parentElement.scrollLeft = documentStage.scrollLeft;
   }
   landscapeScrollbar.addEventListener('scroll', () => {
     if (landscapeScrollbar.hidden || documentStage.scrollLeft === landscapeScrollbar.scrollLeft) return;
     documentStage.scrollLeft = landscapeScrollbar.scrollLeft;
   });
   documentStage.addEventListener('scroll', () => {
+    syncHorizontalRulerScroll();
     if (landscapeScrollbar.hidden) return;
     if (landscapeScrollbar.scrollLeft !== documentStage.scrollLeft) {
       landscapeScrollbar.scrollLeft = documentStage.scrollLeft;
     }
-    horizontalRuler.parentElement.scrollLeft = documentStage.scrollLeft;
   });
 
   function rulerPixels(value) {
@@ -948,7 +1012,7 @@
 
   function syncRulers() {
     if (!horizontalRuler || !verticalRuler) return;
-    pageFrame.style.width = `${editor.getBoundingClientRect().width + 60}px`;
+    pageFrame.style.width = `${editor.getBoundingClientRect().width + 42}px`;
     document.getElementById('add-page-button').style.width = `${editor.offsetWidth}px`;
     const paperRect = editor.getBoundingClientRect();
     const rulerRect = horizontalRuler.parentElement.getBoundingClientRect();
@@ -961,8 +1025,9 @@
     const verticalHeight = paperRect.height;
 
     horizontalRuler.style.width = `${horizontalWidth}px`;
-    horizontalRuler.style.marginLeft = `${paperRect.left - rulerRect.left}px`;
+    horizontalRuler.style.marginLeft = `${paperRect.left - rulerRect.left + documentStage.scrollLeft}px`;
     horizontalRuler.style.marginRight = '0';
+    syncHorizontalRulerScroll();
     horizontalRuler.style.setProperty('--ruler-unit', `${96 * horizontalScale}px`);
     horizontalRuler.style.setProperty('--ruler-start', `${paddingLeft / editor.offsetWidth * 100}%`);
     horizontalRuler.style.setProperty('--ruler-end', `${(editor.offsetWidth - paddingRight) / editor.offsetWidth * 100}%`);
@@ -1196,8 +1261,17 @@
         name: nameInput.value.trim() || 'Untitled document',
         html: editor.innerHTML,
         alignmentGuides,
+        pageSetup: {
+          size: pageSize,
+          landscape,
+          customDimensionsInches: customPageDimensions
+            ? customPageDimensions.map((dimension) => dimension / 96)
+            : null,
+          margins: pageMargins
+        },
         pageBorderStyle,
         pageBorderColor,
+        pageColor,
         updatedAt: new Date().toISOString()
       };
       const storedDocuments = localStorage.getItem(DOCUMENTS_KEY);
@@ -1227,8 +1301,17 @@
         name: nameInput.value.trim() || 'Untitled document',
         html: editor.innerHTML,
         alignmentGuides,
+        pageSetup: {
+          size: pageSize,
+          landscape,
+          customDimensionsInches: customPageDimensions
+            ? customPageDimensions.map((dimension) => dimension / 96)
+            : null,
+          margins: pageMargins
+        },
         pageBorderStyle,
         pageBorderColor,
+        pageColor,
         updatedAt: new Date().toISOString()
       };
       localStorage.setItem(`${RECOVERY_KEY_PREFIX}${activeDocumentId}`, JSON.stringify(draft));
@@ -1241,7 +1324,53 @@
     }
   }
 
-  function scheduleSave() {
+  function setPendingHistoryAction(action, groupKey = null) {
+    if (!action) return;
+    pendingHistoryAction = action;
+    pendingHistoryGroupKey = groupKey;
+    pendingHistoryActionExpiresAt = Date.now() + 1500;
+  }
+
+  function queueHistoryCheckpoint() {
+    if (!documentHistoryManager || isRestoringHistory) return;
+    window.clearTimeout(historyCheckpointTimer);
+    const delay = pendingHistoryGroupKey ? 150 : 0;
+    historyCheckpointTimer = window.setTimeout(() => {
+      historyCheckpointTimer = 0;
+      const expired = Date.now() > pendingHistoryActionExpiresAt;
+      const action = expired || !pendingHistoryAction ? 'Edited Document' : pendingHistoryAction;
+      const groupKey = expired ? null : pendingHistoryGroupKey;
+      pendingHistoryAction = '';
+      pendingHistoryGroupKey = null;
+      pendingHistoryActionExpiresAt = 0;
+      documentHistoryManager.record(action, { groupKey });
+    }, delay);
+  }
+
+  function flushHistoryCheckpoint() {
+    if (historyCheckpointTimer) {
+      window.clearTimeout(historyCheckpointTimer);
+      historyCheckpointTimer = 0;
+    }
+    if (!documentHistoryManager || isRestoringHistory) return;
+    const expired = Date.now() > pendingHistoryActionExpiresAt;
+    const action = expired || !pendingHistoryAction ? 'Edited Document' : pendingHistoryAction;
+    const groupKey = expired ? null : pendingHistoryGroupKey;
+    pendingHistoryAction = '';
+    pendingHistoryGroupKey = null;
+    pendingHistoryActionExpiresAt = 0;
+    documentHistoryManager.record(action, { groupKey });
+  }
+
+  function scheduleSave(historyAction = '', historyGroupKey = null, recordHistory = true) {
+    if (recordHistory) {
+      if (typeof historyAction === 'string' && historyAction) {
+        setPendingHistoryAction(historyAction, historyGroupKey);
+      } else if (!pendingHistoryAction || Date.now() > pendingHistoryActionExpiresAt) {
+        setPendingHistoryAction('Edited Document');
+      }
+      queueHistoryCheckpoint();
+    }
     setSaveStatus('Saving…');
     saveStatus.title = 'Saving on this device';
     if (!recoveryTimer) {
@@ -1274,6 +1403,36 @@
     });
   }
 
+  function applyPageColor() {
+    editor.style.setProperty('--paper', pageColor);
+    const input = document.getElementById('page-color-input');
+    input.value = pageColor;
+    const indicator = input.nextElementSibling?.querySelector('.color-tool > span');
+    if (indicator) indicator.style.backgroundColor = pageColor;
+  }
+
+  function restorePageSetup(settings) {
+    if (!settings || typeof settings !== 'object') return;
+    const sizes = ['Letter', 'Legal', 'Executive', 'A4', 'A5', 'Custom'];
+    if (sizes.includes(settings.size)) pageSize = settings.size;
+    if (typeof settings.landscape === 'boolean') landscape = settings.landscape;
+    if (pageSize === 'Custom' && Array.isArray(settings.customDimensionsInches) &&
+      settings.customDimensionsInches.length === 2 &&
+      settings.customDimensionsInches.every((value) =>
+        Number.isFinite(value) && value >= 4 && value <= 20)) {
+      customPageDimensions = settings.customDimensionsInches.map((value) => value * 96);
+    } else if (pageSize !== 'Custom') {
+      customPageDimensions = null;
+    } else {
+      pageSize = 'A4';
+      customPageDimensions = null;
+    }
+    if (Array.isArray(settings.margins) && settings.margins.length === 4 &&
+      settings.margins.every((value) => Number.isFinite(value) && value >= 0 && value <= 3)) {
+      pageMargins = [...settings.margins];
+    }
+  }
+
   window.addEventListener('pagehide', flushPendingSave);
   window.addEventListener('beforeunload', flushPendingSave);
   document.addEventListener('visibilitychange', () => {
@@ -1291,6 +1450,8 @@
       pageBorderStyle = 'none';
       pageBorderColor = '#697586';
       applyPageBorder();
+      pageColor = '#ffffff';
+      applyPageColor();
       renderAlignmentGuides();
       window.history.replaceState({}, document.title, `${window.location.pathname}?document=${encodeURIComponent(activeDocumentId)}`);
       return;
@@ -1339,6 +1500,7 @@
       if (typeof documentData.name === 'string' && typeof documentData.html === 'string') {
         nameInput.value = documentData.name;
         editor.innerHTML = sanitizeDocumentHtml(documentData.html);
+        restorePageSetup(documentData.pageSetup);
         syncDocumentHeaderSpacing();
         const pageCount = editor.querySelectorAll('.page-break').length + 1;
         const pageHeight = Number.parseFloat(getComputedStyle(editor).getPropertyValue('--layout-page-height')) || 1123;
@@ -1364,6 +1526,10 @@
           : '#697586';
         applyPageBorder();
         document.getElementById('page-border-color-input').value = pageBorderColor;
+        pageColor = /^#[\da-f]{6}$/i.test(documentData.pageColor || '')
+          ? documentData.pageColor
+          : '#ffffff';
+        applyPageColor();
         renderAlignmentGuides();
         if (recoveredDraft) setSaveStatus('Recovered');
       } else {
@@ -1447,10 +1613,132 @@
     protectRangeTimer = window.setTimeout(() => { protectSelectedRange = false; }, 400);
   }
 
+  function getRangeFontSize(range) {
+    if (!range || !editor.contains(range.commonAncestorContainer)) return null;
+    if (range.collapsed) {
+      const container = range.startContainer;
+      const element = container instanceof Element ? container : container.parentElement;
+      return Number.parseFloat(getComputedStyle(element || editor).fontSize) || null;
+    }
+
+    const sizes = new Set();
+    const root = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentElement
+      : range.commonAncestorContainer;
+    const walker = document.createTreeWalker(root || editor, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode;
+      if (!textNode.textContent.trim() || !range.intersectsNode(textNode)) continue;
+      sizes.add(Number.parseFloat(getComputedStyle(textNode.parentElement || editor).fontSize));
+      if (sizes.size > 1) return null;
+    }
+    return sizes.size === 1 ? sizes.values().next().value : null;
+  }
+
+  const FONT_SIZE_SELECTION_HIGHLIGHT = 'font-size-selection';
+  function setFontSizeSelectionHighlight(range) {
+    if (!window.CSS?.highlights || typeof window.Highlight !== 'function') return;
+    window.CSS.highlights.delete(FONT_SIZE_SELECTION_HIGHLIGHT);
+    if (range && !range.collapsed && editor.contains(range.commonAncestorContainer)) {
+      window.CSS.highlights.set(FONT_SIZE_SELECTION_HIGHLIGHT, new window.Highlight(range.cloneRange()));
+    }
+  }
+
+  function updateFontSizeControl(range = null, force = false) {
+    const input = document.getElementById('font-size');
+    if (!input || (input === document.activeElement && !force)) return;
+    const selection = window.getSelection();
+    const currentRange = range || (selection?.rangeCount ? selection.getRangeAt(0) : savedEditorRange);
+    const size = getRangeFontSize(currentRange);
+    input.value = size ? String(Math.round(size * 100) / 100) : '';
+  }
+
+  function getElementFormatState(command, element) {
+    if (!element || element === editor) return false;
+    const computedStyle = getComputedStyle(element);
+    if (command === 'bold') {
+      return element.tagName === 'B' || element.tagName === 'STRONG' ||
+        computedStyle.fontWeight === 'bold' || Number.parseInt(computedStyle.fontWeight, 10) >= 600;
+    }
+    if (command === 'italic') {
+      return element.tagName === 'I' || element.tagName === 'EM' ||
+        ['italic', 'oblique'].includes(computedStyle.fontStyle);
+    }
+    if (command === 'underline') {
+      return element.tagName === 'U' ||
+        computedStyle.textDecorationLine.split(/\s+/).includes('underline');
+    }
+    return false;
+  }
+
+  function getCollapsedInlineFormatState(command, range = null) {
+    const selection = window.getSelection();
+    const caretRange = range || (selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (!caretRange || !caretRange.collapsed || !editor.contains(caretRange.startContainer)) return false;
+    const activeFormatCaret = caretRange.startContainer instanceof Element
+      ? caretRange.startContainer.closest?.('span[data-format-caret="true"]')
+      : caretRange.startContainer.parentElement?.closest?.('span[data-format-caret="true"]');
+    if (activeFormatCaret && editor.contains(activeFormatCaret)) {
+      return getElementFormatState(command, activeFormatCaret);
+    }
+    let element = caretRange.startContainer instanceof Element
+      ? caretRange.startContainer
+      : caretRange.startContainer.parentElement;
+    while (element && element !== editor) {
+      if (getElementFormatState(command, element)) return true;
+      element = element.parentElement;
+    }
+    return false;
+  }
+
+  function getRangeInlineFormatState(command, range) {
+    if (!range || !editor.contains(range.commonAncestorContainer)) return false;
+    if (range.collapsed) return getCollapsedInlineFormatState(command, range);
+
+    const root = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentNode
+      : range.commonAncestorContainer;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let foundText = false;
+    let allTextFormatted = true;
+    const checkTextNode = (node) => {
+      if (!node.textContent || !range.intersectsNode(node)) return true;
+      foundText = true;
+      if (!getElementFormatState(command, node.parentElement)) {
+        allTextFormatted = false;
+        return false;
+      }
+      return true;
+    };
+
+    if (root.nodeType === Node.TEXT_NODE && !checkTextNode(root)) return false;
+    while (walker.nextNode()) {
+      if (!checkTextNode(walker.currentNode)) return false;
+    }
+    return foundText && allTextFormatted;
+  }
+
+  function updateTextFormatButtons() {
+    const selection = window.getSelection();
+    const liveSelectionIsInEditor = selection?.rangeCount &&
+      editor.contains(selection.anchorNode) && editor.contains(selection.focusNode);
+    const range = liveSelectionIsInEditor ? selection.getRangeAt(0) : savedEditorRange;
+    const rangeIsInEditor = range && editor.contains(range.commonAncestorContainer);
+    document.querySelectorAll('.format-group [data-command="bold"], .format-group [data-command="italic"], .format-group [data-command="underline"]').forEach((button) => {
+      const command = button.dataset.command;
+      const active = rangeIsInEditor && getRangeInlineFormatState(command, range);
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+  }
+
   function isAtStartOfBody(range) {
     const firstParagraph = Array.from(editor.querySelectorAll('p')).find((paragraph) =>
       !paragraph.closest('[data-document-region], .editor-shape, table'));
     if (!firstParagraph) return false;
+    if (!firstParagraph.textContent.trim() &&
+      !firstParagraph.querySelector('img, table, .editor-shape, [data-watermark]') &&
+      firstParagraph.contains(range.startContainer)) return true;
     const walker = document.createTreeWalker(firstParagraph, NodeFilter.SHOW_TEXT);
     const firstText = walker.nextNode();
     const bodyStart = document.createRange();
@@ -1475,12 +1763,22 @@
   editor.addEventListener('keyup', () => {
     protectSelectedRange = false;
     lastFormattedSpan = null;
+    const selection = window.getSelection();
+    const selectionElement = selection?.anchorNode instanceof Element
+      ? selection.anchorNode
+      : selection?.anchorNode?.parentElement;
+    const editableObject = selectionElement?.closest('.editor-textbox, .editor-shape[contenteditable="true"]');
+    if (editableObject && document.activeElement !== editableObject) {
+      editableObject.focus({ preventScroll: true });
+    }
     rememberEditorSelection();
   });
 
   document.addEventListener('selectionchange', () => {
     rememberEditorSelection();
     updateTableCaretOverlay();
+    updateFontSizeControl();
+    updateTextFormatButtons();
   });
 
   function focusEditor() {
@@ -1508,12 +1806,27 @@
     restoreBodyCaret();
   }
 
+  function getFormatCaretSpan(range) {
+    if (!range?.collapsed) return null;
+    const container = range.startContainer;
+    const element = container instanceof Element ? container : container.parentElement;
+    const span = element?.closest('span[data-format-caret="true"]');
+    return span && editor.contains(span) && span.contains(container) ? span : null;
+  }
+
   function applyInlineStyle(property, value) {
     focusEditor();
     const selection = window.getSelection();
     if (!selection) return;
     let range = selection.rangeCount ? selection.getRangeAt(0) : null;
     if (range && range.collapsed && lastFormattedSpan && editor.contains(lastFormattedSpan)) {
+      if (lastFormattedSpan.dataset.formatCaret === 'true') {
+        lastFormattedSpan.style.setProperty(property, value);
+        savedEditorRange = selection.getRangeAt(0).cloneRange();
+        scheduleSave();
+        updateCounts();
+        return;
+      }
       range.selectNodeContents(lastFormattedSpan);
       selection.removeAllRanges();
       selection.addRange(range);
@@ -1570,6 +1883,7 @@
     }
     selection.removeAllRanges();
     selection.addRange(nextRange);
+    savedEditorRange = nextRange.cloneRange();
     lastFormattedSpan = span;
     preserveSelectedRange(nextRange);
     let wrapper = span.parentElement;
@@ -1676,9 +1990,66 @@
       return false;
     }
     input.value = String(size);
+    setFontSizeSelectionHighlight(null);
+    const activeSelection = window.getSelection();
+    const rangeBeforeFocus = activeSelection?.rangeCount &&
+      editor.contains(activeSelection.anchorNode)
+      ? activeSelection.getRangeAt(0).cloneRange()
+      : savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
+        ? savedEditorRange.cloneRange()
+        : null;
+    focusEditor();
+    const fontSelection = window.getSelection();
+    if (fontSelection && rangeBeforeFocus &&
+      editor.contains(rangeBeforeFocus.commonAncestorContainer)) {
+      fontSelection.removeAllRanges();
+      fontSelection.addRange(rangeBeforeFocus);
+    }
+    const caretRange = fontSelection?.rangeCount ? fontSelection.getRangeAt(0) : savedEditorRange;
+    if (caretRange?.collapsed && editor.contains(caretRange.startContainer)) {
+      const caretElement = caretRange.startContainer instanceof Element
+        ? caretRange.startContainer
+        : caretRange.startContainer.parentElement;
+      const paragraph = caretElement?.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, div');
+      if (paragraph) {
+        const beforeRange = caretRange.cloneRange();
+        beforeRange.selectNodeContents(paragraph);
+        beforeRange.setEnd(caretRange.startContainer, caretRange.startOffset);
+        const afterRange = caretRange.cloneRange();
+        afterRange.selectNodeContents(paragraph);
+        afterRange.setStart(caretRange.startContainer, caretRange.startOffset);
+        const previousCharacter = Array.from(beforeRange.toString()).pop();
+        const nextCharacter = Array.from(afterRange.toString())[0];
+        const previousIsUrduLetter = previousCharacter &&
+          /\p{L}/u.test(previousCharacter) && /\p{Script=Arabic}/u.test(previousCharacter);
+        const nextIsWhitespace = nextCharacter && /\s/u.test(nextCharacter);
+        if (previousIsUrduLetter && !nextIsWhitespace) {
+          const activeFormatCaret = getFormatCaretSpan(caretRange);
+          if (activeFormatCaret) {
+            activeFormatCaret.before(document.createTextNode(' '));
+          } else {
+            const separator = document.createTextNode(' ');
+            caretRange.insertNode(separator);
+            caretRange.setStartAfter(separator);
+            caretRange.collapse(true);
+            fontSelection.removeAllRanges();
+            fontSelection.addRange(caretRange);
+            savedEditorRange = caretRange.cloneRange();
+          }
+        }
+      }
+    }
     applyingFontSize = true;
     try {
-      applyInlineStyle('font-size', `${size}px`);
+      const activeFormatCaret = getFormatCaretSpan(caretRange);
+      if (activeFormatCaret) {
+        activeFormatCaret.style.setProperty('font-size', `${size}px`);
+        lastFormattedSpan = activeFormatCaret;
+        scheduleSave();
+        updateCounts();
+      } else {
+        applyInlineStyle('font-size', `${size}px`);
+      }
     } finally {
       applyingFontSize = false;
     }
@@ -1688,11 +2059,20 @@
       : savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
         ? savedEditorRange
         : null;
-    const listItems = range
-      ? Array.from(editor.querySelectorAll('li')).filter((item) =>
-        range.collapsed ? item.contains(range.startContainer) : range.intersectsNode(item))
+    const listItems = range && !range.collapsed
+      ? Array.from(editor.querySelectorAll('li')).filter((item) => range.intersectsNode(item))
       : [];
     listItems.forEach((item) => { item.style.fontSize = `${size}px`; });
+    const formattingNode = range?.startContainer;
+    const formattingElement = formattingNode instanceof Element ? formattingNode : formattingNode?.parentElement;
+    const table = formattingElement?.closest('table');
+    if (table) {
+      releaseContentSizedRows(table, true);
+      normalizeTableRowHeights(table);
+      updateTableCaretOverlay();
+      stabilizeTableCaret();
+    }
+    updateFontSizeControl(fontSelection?.rangeCount ? fontSelection.getRangeAt(0) : savedEditorRange);
     if (listItems.length) {
       scheduleSave();
       queueAutoPagination();
@@ -1754,16 +2134,96 @@
   }
 
   const keyboardToggle = document.getElementById('onscreen-keyboard-toggle');
+  const mobileKeyboardToggle = document.getElementById('mobile-keyboard-toggle');
   const onscreenKeyboard = document.getElementById('onscreen-keyboard');
   let keyboardLayout = 'urdu';
   keyboardToggle.addEventListener('click', () => {
     const expanded = keyboardToggle.getAttribute('aria-expanded') !== 'true';
     keyboardToggle.setAttribute('aria-expanded', String(expanded));
+    mobileKeyboardToggle.setAttribute('aria-pressed', String(expanded));
     onscreenKeyboard.hidden = !expanded;
-    keyboardToggle.closest('.keyboard-sidebar').classList.toggle('keyboard-open', expanded);
+    const keyboardSidebar = keyboardToggle.closest('.keyboard-sidebar');
+    keyboardSidebar.classList.toggle('keyboard-open', expanded);
     document.body.classList.toggle('landscape-keyboard-open', expanded);
+    document.documentElement.style.setProperty(
+      '--mobile-keyboard-height',
+      expanded && window.matchMedia('(max-width: 900px)').matches
+        ? `${keyboardSidebar.offsetHeight}px`
+        : '0px'
+    );
     syncRulers();
+    if (expanded) keepEditorCaretVisible();
   });
+  mobileKeyboardToggle.addEventListener('click', () => keyboardToggle.click());
+  document.getElementById('mobile-undo').addEventListener('click', () => undoButton.click());
+  document.getElementById('mobile-redo').addEventListener('click', () => redoButton.click());
+  document.getElementById('mobile-zoom-out').addEventListener('click', () => document.getElementById('status-zoom-out').click());
+  document.getElementById('mobile-zoom-in').addEventListener('click', () => document.getElementById('status-zoom-in').click());
+  const syncMobileViewport = () => {
+    const viewport = window.visualViewport;
+    document.documentElement.style.setProperty(
+      '--visual-viewport-height',
+      `${viewport ? viewport.height : window.innerHeight}px`
+    );
+    document.documentElement.style.setProperty(
+      '--mobile-viewport-bottom',
+      `${Math.max(0, window.innerHeight - (viewport ? viewport.height + viewport.offsetTop : window.innerHeight))}px`
+    );
+    const keyboardOpen = keyboardToggle.getAttribute('aria-expanded') === 'true';
+    const sidebar = keyboardToggle.closest('.keyboard-sidebar');
+    document.documentElement.style.setProperty(
+      '--mobile-keyboard-height',
+      keyboardOpen && window.matchMedia('(max-width: 900px)').matches
+        ? `${sidebar.offsetHeight}px`
+        : '0px'
+    );
+  };
+  syncMobileViewport();
+  window.addEventListener('resize', syncMobileViewport, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncMobileViewport, { passive: true });
+    window.visualViewport.addEventListener('scroll', syncMobileViewport, { passive: true });
+  }
+  const keepEditorCaretVisible = () => {
+    if (!window.matchMedia('(max-width: 900px)').matches) return;
+    window.setTimeout(() => {
+      const selection = window.getSelection();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      const rangeRect = range?.getBoundingClientRect();
+      const focusNode = selection?.focusNode;
+      const focusElement = focusNode instanceof Element ? focusNode : focusNode?.parentElement;
+      let target = rangeRect?.height ? rangeRect : null;
+      if (!target && range && focusNode?.nodeType === Node.TEXT_NODE && focusNode.textContent.length) {
+        const offset = selection.focusOffset;
+        const characterRange = range.cloneRange();
+        const characterStart = offset > 0 ? offset - 1 : 0;
+        characterRange.setStart(focusNode, characterStart);
+        characterRange.setEnd(focusNode, offset > 0 ? offset : 1);
+        const characterRect = characterRange.getBoundingClientRect();
+        if (characterRect.height) target = characterRect;
+      }
+      if (!target) {
+        target = focusElement?.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote')?.getBoundingClientRect() ||
+          editor.getBoundingClientRect();
+      }
+      const workspace = document.querySelector('.document-workspace');
+      const viewport = window.visualViewport;
+      if (!workspace || !target) return;
+      const visibleTop = viewport?.offsetTop || 0;
+      const keyboard = keyboardToggle.getAttribute('aria-expanded') === 'true'
+        ? keyboardToggle.closest('.keyboard-sidebar').offsetHeight
+        : 0;
+      const visibleBottom = visibleTop + (viewport?.height || window.innerHeight) -
+        (document.getElementById('mobile-action-bar').offsetHeight || 64) - keyboard - 12;
+      if (target.bottom > visibleBottom) {
+        workspace.scrollBy({ top: target.bottom - visibleBottom + 16, behavior: 'smooth' });
+      } else if (target.top < visibleTop + 8) {
+        workspace.scrollBy({ top: target.top - visibleTop - 8, behavior: 'smooth' });
+      }
+    }, 120);
+  };
+  editor.addEventListener('focusin', keepEditorCaretVisible);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', keepEditorCaretVisible, { passive: true });
   document.querySelectorAll('[data-keyboard-layout]').forEach((tab) => {
     tab.addEventListener('click', () => {
       const layout = tab.dataset.keyboardLayout;
@@ -1834,6 +2294,36 @@
   const insertKeyboardOutput = (output, editableTarget = null) => {
     const insertText = (text) => {
       if (!editableTarget) {
+        const selection = window.getSelection();
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+        const formatCaret = range && getFormatCaretSpan(range);
+        if (selection && range?.collapsed && formatCaret) {
+          let formattedRun = formatCaret.previousElementSibling;
+          if (!formattedRun || formattedRun.tagName !== 'SPAN' ||
+            formattedRun.nextSibling !== formatCaret ||
+            formattedRun.style.cssText !== formatCaret.style.cssText) {
+            formattedRun = document.createElement('span');
+            formattedRun.style.cssText = formatCaret.style.cssText;
+            formatCaret.before(formattedRun);
+          }
+          formattedRun.append(document.createTextNode(text));
+          const nextCaret = formatCaret.cloneNode(false);
+          nextCaret.textContent = '\u200b';
+          formatCaret.replaceWith(nextCaret);
+          const nextRange = document.createRange();
+          nextRange.setStart(nextCaret.firstChild, 0);
+          nextRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(nextRange);
+          lastFormattedSpan = nextCaret;
+          savedEditorRange = nextRange.cloneRange();
+          editor.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertText',
+            data: text
+          }));
+          return;
+        }
         document.execCommand('insertText', false, text);
         return;
       }
@@ -1858,6 +2348,7 @@
       range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
+      editableTarget.focus({ preventScroll: true });
       editableTarget.dispatchEvent(new InputEvent('input', {
         bubbles: true,
         inputType: 'insertText',
@@ -1975,49 +2466,545 @@
     return `${base || 'urdu-document'}.${extension}`;
   }
 
+  function historyLabelForCommand(command) {
+    const labels = {
+      bold: 'Applied Bold',
+      italic: 'Applied Italic',
+      underline: 'Applied Underline',
+      fontName: 'Changed Font',
+      foreColor: 'Changed Font Color',
+      hiliteColor: 'Highlighted Text',
+      insertUnorderedList: 'Applied Bullets',
+      insertOrderedList: 'Applied Numbering',
+      justifyLeft: 'Aligned Text Left',
+      justifyCenter: 'Centered Text',
+      justifyRight: 'Aligned Text Right',
+      justifyFull: 'Justified Text'
+    };
+    return labels[command] || `Applied ${command.replace(/([A-Z])/g, ' $1').toLowerCase()}`;
+  }
+
+  function historyLabelForTableDrag(kind, index) {
+    if (kind === 'column') return `Resized Column ${index + 1}`;
+    if (kind === 'row') return `Resized Row ${index + 1}`;
+    if (kind === 'move') return 'Moved Table';
+    if (kind === 'left-edge' || kind === 'right-edge') return 'Resized Table';
+    if (kind === 'row-reorder') return 'Reordered Rows';
+    if (kind === 'column-reorder') return 'Reordered Columns';
+    return 'Edited Table';
+  }
+
+  function historyGroupForControl(control) {
+    if (control === nameInput) return 'document-name';
+    if (control instanceof HTMLInputElement &&
+      ['color', 'number', 'range', 'search', 'text'].includes(control.type)) {
+      return `control:${control.id || control.type}`;
+    }
+    if (control instanceof HTMLTextAreaElement) return `control:${control.id || 'text-area'}`;
+    return null;
+  }
+
+  function clearCollapsedInlineFormat(command) {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount || !selection.isCollapsed) return false;
+    return setCollapsedInlineFormat(command, false);
+  }
+
+  function isUnderlineFormattingElement(element) {
+    if (element.tagName === 'U' || element.tagName === 'INS' || element.tagName === 'A') return true;
+    return /\bunderline\b/i.test(
+      `${element.style.textDecoration} ${element.style.textDecorationLine}`
+    );
+  }
+
+  function splitInlineElementAtCaret(element, caret) {
+    const beforeRange = document.createRange();
+    beforeRange.selectNodeContents(element);
+    beforeRange.setEndBefore(caret);
+    const before = beforeRange.extractContents();
+
+    const afterRange = document.createRange();
+    afterRange.selectNodeContents(element);
+    afterRange.setStartAfter(caret);
+    const after = afterRange.extractContents();
+
+    const replacements = [];
+    if (before.hasChildNodes()) {
+      const beforeElement = element.cloneNode(false);
+      beforeElement.removeAttribute('id');
+      beforeElement.append(before);
+      replacements.push(beforeElement);
+    }
+    replacements.push(caret);
+    if (after.hasChildNodes()) {
+      const afterElement = element.cloneNode(false);
+      afterElement.removeAttribute('id');
+      afterElement.append(after);
+      replacements.push(afterElement);
+    }
+    element.replaceWith(...replacements);
+  }
+
+  function removeUnderlineFromCaret(caret) {
+    let underlineElement = caret.parentElement;
+    while (underlineElement && underlineElement !== editor &&
+      !isUnderlineFormattingElement(underlineElement)) {
+      underlineElement = underlineElement.parentElement;
+    }
+    if (!underlineElement || underlineElement === editor) return;
+
+    const computedStyle = getComputedStyle(caret);
+    for (const property of ['font-weight', 'font-style', 'font-family', 'font-size', 'color']) {
+      caret.style.setProperty(property, computedStyle.getPropertyValue(property));
+    }
+
+    let element = caret.parentElement;
+    while (element && element !== editor) {
+      const parent = element.parentElement;
+      splitInlineElementAtCaret(element, caret);
+      if (element === underlineElement) break;
+      element = parent;
+    }
+  }
+
+  function setCollapsedInlineFormat(command, active) {
+    const formatStyles = {
+      bold: ['font-weight', '700', 'normal'],
+      italic: ['font-style', 'italic', 'normal'],
+      underline: ['text-decoration', 'underline', 'none']
+    };
+    const style = formatStyles[command];
+    const selection = window.getSelection();
+    if (!style || !selection?.rangeCount || !selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.startContainer)) return false;
+
+    let caret = getFormatCaretSpan(range);
+    if (!caret) {
+      caret = document.createElement('span');
+      caret.dataset.formatCaret = 'true';
+      caret.textContent = '\u200b';
+      range.insertNode(caret);
+    }
+    if (command === 'underline' && !active) removeUnderlineFromCaret(caret);
+    caret.style.setProperty(style[0], active ? style[1] : style[2]);
+
+    const nextRange = document.createRange();
+    nextRange.setStart(caret.firstChild, 0);
+    nextRange.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(nextRange);
+    savedEditorRange = nextRange.cloneRange();
+    lastFormattedSpan = caret;
+    updateTextFormatButtons();
+    return true;
+  }
+
+  function toggleCollapsedInlineFormat(command) {
+    if (!['bold', 'italic', 'underline'].includes(command)) return false;
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount || !selection.isCollapsed || !editor.contains(selection.anchorNode)) return false;
+    const alreadyActive = getCollapsedInlineFormatState(command);
+    if (alreadyActive) {
+      clearCollapsedInlineFormat(command);
+      return true;
+    }
+    return setCollapsedInlineFormat(command, true);
+  }
+
   function runCommand(command, value = null) {
     focusEditor();
     let selection = window.getSelection();
+    if (['bold', 'italic', 'underline'].includes(command) && selection?.isCollapsed &&
+      selection.rangeCount && editor.contains(selection.anchorNode) &&
+      toggleCollapsedInlineFormat(command)) {
+      scheduleSave();
+      updateCounts();
+      queueAutoPagination();
+      return;
+    }
     if (selection && selection.isCollapsed && lastFormattedSpan && editor.contains(lastFormattedSpan) &&
       ['bold', 'italic', 'underline', 'fontName', 'foreColor', 'hiliteColor'].includes(command)) {
-      const range = document.createRange();
-      range.selectNodeContents(lastFormattedSpan);
-      selection.removeAllRanges();
-      selection.addRange(range);
-      savedEditorRange = range.cloneRange();
+      const caret = selection.rangeCount ? getFormatCaretSpan(selection.getRangeAt(0)) : null;
+      if (!caret) {
+        const range = document.createRange();
+        range.selectNodeContents(lastFormattedSpan);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        savedEditorRange = range.cloneRange();
+      }
     }
+    selection = window.getSelection();
     const currentRange = selection && selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
     if (command === 'italic' && currentRange && !currentRange.collapsed) {
       applyEnglishItalic(currentRange);
+      updateTextFormatButtons();
+      scheduleSave(historyLabelForCommand(command));
       queueAutoPagination();
       return;
     }
     document.execCommand(command, false, value);
     if (command === 'hiliteColor' && currentRange && !currentRange.collapsed &&
-      typeof value === 'string' && value !== 'transparent') {
+      typeof value === 'string') {
       editor.querySelectorAll('span[style*="background-color"]').forEach((span) => {
-        if (currentRange.intersectsNode(span)) {
-          span.style.setProperty('--text-highlight-color', span.style.backgroundColor);
+        if (!currentRange.intersectsNode(span)) return;
+        if (value === 'transparent') span.style.removeProperty('--text-highlight-color');
+        else span.style.setProperty('--text-highlight-color', span.style.backgroundColor);
+      });
+    }
+    if (['foreColor', 'removeFormat'].includes(command)) {
+      const startNode = currentRange?.startContainer;
+      const startElement = startNode instanceof Element ? startNode : startNode?.parentElement;
+      const listItems = currentRange && !currentRange.collapsed
+        ? Array.from(editor.querySelectorAll('li')).filter((item) => currentRange.intersectsNode(item))
+        : [startElement?.closest('li')].filter((item) => item && editor.contains(item));
+      listItems.forEach((item) => {
+        if (command === 'foreColor' && typeof value === 'string' && CSS.supports('color', value)) {
+          item.style.color = value;
+        } else {
+          item.style.removeProperty('color');
         }
       });
     }
     if (['bold', 'italic', 'underline', 'fontName', 'foreColor', 'hiliteColor'].includes(command)) {
       preserveSelectedRange(currentRange);
     }
-    scheduleSave();
+    updateTextFormatButtons();
+    scheduleSave(historyLabelForCommand(command));
     updateCounts();
     queueAutoPagination();
   }
 
-  editor.addEventListener('input', () => {
-    if (restoreBodyCaret()) window.requestAnimationFrame(restoreBodyCaret);
+  function getHistoryInputAction(event) {
+    const inputType = event.inputType || '';
+    if (inputType === 'insertText' || inputType === 'insertCompositionText') {
+      return { action: 'Typed Text', groupKey: 'typing' };
+    }
+    if (inputType.startsWith('delete')) {
+      return { action: 'Deleted Text', groupKey: 'deleting' };
+    }
+    if (inputType === 'insertFromPaste' || inputType === 'insertFromDrop') {
+      return { action: inputType === 'insertFromPaste' ? 'Pasted Content' : 'Dropped Content' };
+    }
+    if (inputType === 'insertParagraph' || inputType === 'insertLineBreak') {
+      return { action: 'Inserted Paragraph' };
+    }
+    if (inputType === 'insertTable') return { action: 'Inserted Table' };
+    if (inputType.startsWith('format')) return { action: 'Formatted Text' };
+    return { action: 'Edited Document' };
+  }
+
+  function historyNodePath(root, node) {
+    if (!(node instanceof Node) || (node !== root && !root.contains(node))) return null;
+    const path = [];
+    while (node !== root) {
+      const parent = node.parentNode;
+      if (!parent) return null;
+      path.unshift(Array.prototype.indexOf.call(parent.childNodes, node));
+      node = parent;
+    }
+    return path;
+  }
+
+  function historyNodeAtPath(root, path) {
+    let node = root;
+    for (const index of path || []) {
+      node = node.childNodes[index];
+      if (!node) return null;
+    }
+    return node;
+  }
+
+  function captureHistorySelection() {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return null;
+    const anchorPath = historyNodePath(editor, selection.anchorNode);
+    const focusPath = historyNodePath(editor, selection.focusNode);
+    if (!anchorPath || !focusPath) return null;
+    return {
+      anchorPath,
+      anchorOffset: selection.anchorOffset,
+      focusPath,
+      focusOffset: selection.focusOffset
+    };
+  }
+
+  function captureHistoryState() {
+    const snapshot = editor.cloneNode(true);
+    snapshot.querySelectorAll(
+      '.table-caret-target, .table-band-selected, .image-selected, .image-crop-active, ' +
+      '.shape-selected, .watermark-selected, .selected-object'
+    ).forEach((element) => {
+      element.classList.remove(
+        'table-caret-target', 'table-band-selected', 'image-selected', 'image-crop-active',
+        'shape-selected', 'watermark-selected', 'selected-object'
+      );
+    });
+    snapshot.querySelectorAll('[class=""]').forEach((element) => element.removeAttribute('class'));
+    return {
+      html: snapshot.innerHTML,
+      name: nameInput.value,
+      alignmentGuides: JSON.parse(JSON.stringify(alignmentGuides)),
+      pageBorderStyle,
+      pageBorderColor,
+      pageColor,
+      selection: captureHistorySelection()
+    };
+  }
+
+  function restoreHistoryState(state) {
+    isRestoringHistory = true;
+    try {
+      editor.innerHTML = state.html;
+      nameInput.value = state.name;
+      alignmentGuides = JSON.parse(JSON.stringify(state.alignmentGuides || []));
+      pageBorderStyle = state.pageBorderStyle;
+      pageBorderColor = state.pageBorderColor;
+      pageColor = /^#[\da-f]{6}$/i.test(state.pageColor || '') ? state.pageColor : '#ffffff';
+      applyPageBorder();
+      document.getElementById('page-border-color-input').value = pageBorderColor;
+      applyPageColor();
+      syncDocumentHeaderSpacing();
+      renderAlignmentGuides();
+
+      editor.querySelectorAll(
+        '.table-caret-target, .table-band-selected, .image-selected, .image-crop-active, ' +
+        '.shape-selected, .watermark-selected, .selected-object'
+      ).forEach((element) => {
+        element.classList.remove(
+          'table-caret-target', 'table-band-selected', 'image-selected', 'image-crop-active',
+          'shape-selected', 'watermark-selected', 'selected-object'
+        );
+      });
+      selectedTableBand = null;
+      activeImage = null;
+      imageCropMode = false;
+      pictureFormatTab.hidden = true;
+      if (pictureFormatTab.classList.contains('active') || shapeFormatTab.classList.contains('active') ||
+        textboxFormatTab.classList.contains('active')) {
+        activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+      }
+      activeShape = null;
+      activeTableCell = null;
+      activeCaretTableCell = null;
+      activeTable = null;
+      activeWatermark = null;
+      selectedObject = null;
+      updateTableToolbar(null);
+      imageToolbar.hidden = true;
+      hideShapeFormatTabs();
+      shapeToolbar.hidden = true;
+      watermarkToolbar.hidden = true;
+      imageManipulators.replaceChildren();
+      shapeManipulators.replaceChildren();
+      watermarkManipulators.replaceChildren();
+      tableCaretOverlay.hidden = true;
+
+      editor.focus({ preventScroll: true });
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        const anchor = state.selection && historyNodeAtPath(editor, state.selection.anchorPath);
+        const focus = state.selection && historyNodeAtPath(editor, state.selection.focusPath);
+        if (anchor && focus && typeof selection.setBaseAndExtent === 'function') {
+          const anchorLimit = anchor.nodeType === Node.TEXT_NODE
+            ? anchor.textContent.length
+            : anchor.childNodes.length;
+          const focusLimit = focus.nodeType === Node.TEXT_NODE
+            ? focus.textContent.length
+            : focus.childNodes.length;
+          selection.setBaseAndExtent(
+            anchor,
+            Math.min(state.selection.anchorOffset, anchorLimit),
+            focus,
+            Math.min(state.selection.focusOffset, focusLimit)
+          );
+        } else {
+          const range = document.createRange();
+          range.selectNodeContents(editor);
+          range.collapse(false);
+          selection.addRange(range);
+        }
+      }
+      savedEditorRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+      lastFormattedSpan = null;
+      updateCounts(false);
+      syncRulers();
+      queueAutoPagination();
+      scheduleSave('', null, false);
+    } finally {
+      isRestoringHistory = false;
+    }
+  }
+
+  function historyLabelForControl(control) {
+    if (!control) return '';
+    if (control.dataset.command) return historyLabelForCommand(control.dataset.command);
+    const tableActionLabels = {
+      'row-above': 'Inserted Row Above',
+      'row-below': 'Inserted Row Below',
+      'column-left': 'Inserted Column Left',
+      'column-right': 'Inserted Column Right',
+      'delete-row': 'Deleted Row',
+      'delete-column': 'Deleted Column',
+      'delete-table': 'Deleted Table',
+      'merge-cells': 'Merged Cells',
+      'split-cell': 'Split Cell',
+      'distribute-columns': 'Distributed Columns',
+      'distribute-rows': 'Distributed Rows',
+      'shade-cell': 'Changed Cell Color'
+    };
+    if (tableActionLabels[control.dataset.tableAction]) {
+      return tableActionLabels[control.dataset.tableAction];
+    }
+    const label = control.getAttribute('aria-label') || control.title ||
+      control.closest('label')?.textContent || control.textContent || control.id || '';
+    const words = label.replace(/\s+/g, ' ').trim().replace(/[↶↷▾＋+]/g, '').trim();
+    if (!words) return '';
+    const verb = /^(add|insert|delete|remove|resize|move|change|set|apply|format|merge|split|align|distribute|shade|fit|clear|rotate|crop|replace|upload|download|print)\b/i.exec(words);
+    const pastTense = {
+      add: 'Added', insert: 'Inserted', delete: 'Deleted', remove: 'Removed',
+      resize: 'Resized', move: 'Moved', change: 'Changed', set: 'Changed',
+      apply: 'Applied', format: 'Formatted', merge: 'Merged', split: 'Split',
+      align: 'Aligned', distribute: 'Distributed', shade: 'Changed',
+      fit: 'Fit', clear: 'Cleared', rotate: 'Rotated', crop: 'Cropped',
+      replace: 'Replaced', upload: 'Uploaded', download: 'Downloaded', print: 'Printed'
+    };
+    return verb ? `${pastTense[verb[1].toLowerCase()]}${words.slice(verb[0].length)}` : `Changed ${words}`;
+  }
+
+  function historyNavigation(method, count = 1) {
+    if (!documentHistoryManager) return Promise.resolve(0);
+    flushHistoryCheckpoint();
+    return documentHistoryManager[method](count).catch((error) => {
+      console.error(`Could not ${method === 'undoSteps' ? 'undo' : 'redo'} document changes.`, error);
+      showToast(`Could not ${method === 'undoSteps' ? 'undo' : 'redo'} the document change.`);
+      return 0;
+    });
+  }
+
+  document.addEventListener('click', (event) => {
+    const control = event.target instanceof Element
+      ? event.target.closest('button, [role="button"]')
+      : null;
+    if (!control || ['undo-button', 'redo-button'].includes(control.id)) return;
+    setPendingHistoryAction(historyLabelForControl(control));
+  }, true);
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const grip = target.closest('[data-grip-kind]');
+    const kind = grip?.dataset.gripKind;
+    const shapeMove = target.closest('[data-shape-move-handle]');
+    const shapeResize = target.closest('[data-shape-resize-x]');
+    const shapeRotate = target.closest('[data-shape-rotate-handle]');
+    const watermarkRotate = target.closest('[data-watermark-rotate-handle]');
+    const watermarkResize = target.closest('[data-watermark-resize-handle]');
+    const imageResize = target.closest('[data-resize-corner]');
+    const image = target.closest('img[data-image-wrap="free"]');
+    const label = kind
+      ? historyLabelForTableDrag(kind, Number(grip.dataset.gripIndex))
+      : shapeMove ? 'Moved Shape'
+        : shapeResize ? 'Resized Shape'
+          : shapeRotate ? 'Rotated Shape'
+            : watermarkRotate ? 'Rotated Watermark'
+              : watermarkResize ? 'Resized Watermark'
+                : imageResize ? 'Resized Picture'
+                  : target.closest('.image-rotate-handle') ? 'Rotated Picture'
+                    : image ? 'Moved Picture'
+                      : '';
+    if (!label) return;
+    activePointerHistoryAction = { pointerId: event.pointerId, action: label };
+    setPendingHistoryAction(label);
+  }, true);
+  ['pointerup', 'pointercancel'].forEach((eventName) => {
+    document.addEventListener(eventName, (event) => {
+      if (activePointerHistoryAction?.pointerId !== event.pointerId) return;
+      setPendingHistoryAction(activePointerHistoryAction.action);
+      activePointerHistoryAction = null;
+    }, true);
+  });
+  document.addEventListener('input', (event) => {
+    if (event.target === editor || (event.target instanceof Node && editor.contains(event.target))) {
+      const { action, groupKey } = getHistoryInputAction(event);
+      setPendingHistoryAction(action, groupKey || null);
+      return;
+    }
+    if (event.target === nameInput) {
+      setPendingHistoryAction('Renamed Document', 'document-name');
+      return;
+    }
+    const control = event.target instanceof Element ? event.target : null;
+    if (control) {
+      setPendingHistoryAction(historyLabelForControl(control), historyGroupForControl(control));
+    }
+  }, true);
+  document.addEventListener('change', (event) => {
+    const control = event.target instanceof Element ? event.target : null;
+    if (control && control !== nameInput && !editor.contains(control)) {
+      setPendingHistoryAction(historyLabelForControl(control), historyGroupForControl(control));
+    }
+  }, true);
+  document.addEventListener('paste', () => {
+    setPendingHistoryAction('Pasted Content');
+  }, true);
+  document.addEventListener('drop', () => {
+    setPendingHistoryAction('Dropped Content');
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (!editor.contains(event.target)) return;
+    const key = event.key.toLowerCase();
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const method = key === 'z' && event.shiftKey ? 'redoSteps'
+      : key === 'z' ? 'undoSteps'
+        : key === 'y' && !event.shiftKey ? 'redoSteps'
+          : null;
+    if (!method) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void historyNavigation(method);
+  }, true);
+  editor.addEventListener('beforeinput', (event) => {
+    const method = event.inputType === 'historyUndo' ? 'undoSteps'
+      : event.inputType === 'historyRedo' ? 'redoSteps'
+        : null;
+    if (!method) return;
+    event.preventDefault();
+    void historyNavigation(method);
+  });
+
+  editor.addEventListener('input', (event) => {
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode;
+    const anchorElement = anchor instanceof Element ? anchor : anchor?.parentElement;
+    const table = anchorElement?.closest('table');
+    if (table) {
+      releaseContentSizedRows(table);
+      normalizeTableRowHeights(table);
+      updateTableCaretOverlay();
+      if (activeTable === table) refreshTableManipulators(table);
+    }
+    editor.querySelectorAll('p[style*="background-color"], li[style*="background-color"], h1[style*="background-color"], h2[style*="background-color"], h3[style*="background-color"], h4[style*="background-color"], h5[style*="background-color"], h6[style*="background-color"], blockquote[style*="background-color"], div[style*="background-color"]').forEach((block) => {
+      if (block.closest('[data-document-region], .editor-shape, .editor-textbox, [contenteditable="false"]') ||
+        block.textContent.replace(/[\s\u200b\ufeff]/g, '') ||
+        block.querySelector('img, table, .editor-shape, .editor-textbox, [data-watermark]')) return;
+      block.style.removeProperty('background-color');
+    });
+    const inputElement = event.target instanceof Element ? event.target : event.target.parentElement;
+    const selectionElement = selection?.anchorNode instanceof Element
+      ? selection.anchorNode
+      : selection?.anchorNode?.parentElement;
+    const isEditingObjectText = inputElement?.closest('.editor-textbox, .editor-shape[contenteditable="true"]') ||
+      selectionElement?.closest('.editor-textbox, .editor-shape[contenteditable="true"]');
+    if (!isEditingObjectText && restoreBodyCaret()) window.requestAnimationFrame(restoreBodyCaret);
     scheduleSave();
     queueAutoPagination();
     updateWordSuggestions();
   });
   editor.addEventListener('keydown', (event) => {
-    restoreBodyCaret();
     const eventElement = event.target instanceof Element ? event.target : event.target.parentElement;
+    const isEditingObjectText = eventElement?.closest('.editor-textbox, .editor-shape[contenteditable="true"]');
+    if (!isEditingObjectText) restoreBodyCaret();
     const selection = window.getSelection();
     const selectionElement = selection?.anchorNode instanceof Element
       ? selection.anchorNode
@@ -2028,6 +3015,41 @@
       selectionElement?.closest('.editor-textbox');
     const editableShape = eventElement?.closest('.editor-shape[contenteditable="true"]') ||
       selectionElement?.closest('.editor-shape[contenteditable="true"]');
+    if (event.key === 'Backspace' && selection?.isCollapsed) {
+      const listItem = selectionElement?.closest('li');
+      const list = listItem?.parentElement;
+      if (listItem && list && editor.contains(listItem) &&
+        !listItem.textContent.replace(/[\s\u200b\ufeff]/g, '') &&
+        !listItem.querySelector('img, table, ul, ol, .editor-shape, [data-watermark]')) {
+        event.preventDefault();
+        const trailingList = list.cloneNode(false);
+        let nextItem = listItem.nextElementSibling;
+        while (nextItem) {
+          const followingItem = nextItem.nextElementSibling;
+          trailingList.append(nextItem);
+          nextItem = followingItem;
+        }
+        listItem.remove();
+        const paragraph = document.createElement('p');
+        paragraph.append(document.createElement('br'));
+        if (list.children.length) {
+          list.after(paragraph);
+          if (trailingList.children.length) paragraph.after(trailingList);
+        } else {
+          list.replaceWith(paragraph);
+          if (trailingList.children.length) paragraph.after(trailingList);
+        }
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        scheduleSave();
+        queueAutoPagination();
+        updateCounts();
+        return;
+      }
+    }
     if (!documentRegion && !textBox && !editableShape && selection?.rangeCount &&
       ['Backspace', 'Delete'].includes(event.key)) {
       const range = selection.getRangeAt(0);
@@ -2115,6 +3137,39 @@
   });
   nameInput.addEventListener('input', scheduleSave);
   restoreDocument();
+  const undoButton = document.getElementById('undo-button');
+  const redoButton = document.getElementById('redo-button');
+  documentHistoryManager = new window.WordStyleHistoryManager({
+    captureState: captureHistoryState,
+    restoreState: restoreHistoryState,
+    maxHistory: 100,
+    groupingWindow: 900,
+    getStateKey: (state) => JSON.stringify({
+      html: state.html,
+      name: state.name,
+      alignmentGuides: state.alignmentGuides,
+      pageBorderStyle: state.pageBorderStyle,
+      pageBorderColor: state.pageBorderColor,
+      pageColor: state.pageColor
+    }),
+    onStateChange: (state) => {
+      undoButton.disabled = !state.canUndo;
+      redoButton.disabled = !state.canRedo;
+      document.getElementById('mobile-undo').disabled = !state.canUndo;
+      document.getElementById('mobile-redo').disabled = !state.canRedo;
+      undoButton.dataset.historyCount = String(state.undoCount);
+      redoButton.dataset.historyCount = String(state.redoCount);
+      undoButton.title = state.canUndo
+        ? `Undo (Ctrl+Z) — ${state.undoCount} action${state.undoCount === 1 ? '' : 's'} available${state.nextUndoAction ? `; next: ${state.nextUndoAction}` : ''}`
+        : 'Undo (Ctrl+Z)';
+      redoButton.title = state.canRedo
+        ? `Redo (Ctrl+Y) — ${state.redoCount} action${state.redoCount === 1 ? '' : 's'} available${state.nextRedoAction ? `; next: ${state.nextRedoAction}` : ''}`
+        : 'Redo (Ctrl+Y)';
+    }
+  });
+  window.documentHistoryManager = documentHistoryManager;
+  window.wordStyleHistoryManager = documentHistoryManager;
+  documentHistoryManager.initialize();
   editor.querySelectorAll('.table-caret-target').forEach((cell) => {
     cell.classList.remove('table-caret-target');
   });
@@ -2126,15 +3181,11 @@
 
   document.querySelectorAll('[data-command]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (button.dataset.command === 'bold') {
-        const hasSavedText = savedEditorRange && !savedEditorRange.collapsed && savedEditorRange.toString();
-        if (!hasSavedText && !lastFormattedSpan) return;
-      }
       runCommand(button.dataset.command);
     });
   });
-  document.getElementById('undo-button').addEventListener('click', () => runCommand('undo'));
-  document.getElementById('redo-button').addEventListener('click', () => runCommand('redo'));
+  undoButton.addEventListener('click', () => { void historyNavigation('undoSteps'); });
+  redoButton.addEventListener('click', () => { void historyNavigation('redoSteps'); });
   document.getElementById('copy-button').addEventListener('click', () => {
     focusEditor();
     const selection = window.getSelection();
@@ -2203,6 +3254,25 @@
   const fontSizeInput = document.getElementById('font-size');
   const fontSizeToggle = document.getElementById('font-size-toggle');
   const fontSizeMenu = document.getElementById('font-size-menu');
+  fontSizeInput.addEventListener('focus', () => {
+    const selection = window.getSelection();
+    const range = savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
+      ? savedEditorRange
+      : selection?.rangeCount && editor.contains(selection.anchorNode)
+        ? selection.getRangeAt(0)
+        : null;
+    updateFontSizeControl(range, true);
+    setFontSizeSelectionHighlight(range);
+  });
+  fontSizeInput.addEventListener('input', () => {
+    if (!fontSizeInput.value.trim()) return;
+    const size = Number(fontSizeInput.value);
+    if (Number.isFinite(size) && size >= 6 && size <= 1000) fontSizeInput.setCustomValidity('');
+  });
+  fontSizeInput.addEventListener('blur', () => {
+    setFontSizeSelectionHighlight(null);
+    updateFontSizeControl();
+  });
   const closeFontSizeMenu = () => {
     fontSizeMenu.hidden = true;
     fontSizeToggle.setAttribute('aria-expanded', 'false');
@@ -2223,7 +3293,10 @@
   fontSizeInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (applyFontSize(fontSizeInput)) focusEditor();
+      if (applyFontSize(fontSizeInput)) {
+        focusEditor();
+        fontSizeInput.blur();
+      }
     } else if (event.key === 'Escape') {
       closeFontSizeMenu();
       fontSizeInput.blur();
@@ -2255,9 +3328,10 @@
     if (!fontSizeMenu.hidden) positionFontSizeMenu();
   });
   document.querySelectorAll('[data-size-step]').forEach((button) => {
+    button.addEventListener('pointerdown', (event) => event.preventDefault());
     button.addEventListener('click', () => {
       const presets = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
-      const current = Number(fontSizeInput.value) || 18;
+      const current = Number(fontSizeInput.value) || 12;
       const next = button.dataset.sizeStep === '1'
         ? presets.find((preset) => preset > current) || Math.min(1000, current + 1)
         : [...presets].reverse().find((preset) => preset < current) || Math.max(6, current - 1);
@@ -2268,10 +3342,20 @@
   const paragraphMenus = {
     bullets: document.getElementById('bullet-menu'),
     numbering: document.getElementById('numbering-menu'),
-    spacing: document.getElementById('spacing-menu')
+    spacing: document.getElementById('spacing-menu'),
+    underline: document.getElementById('underline-menu')
   };
   Object.values(paragraphMenus).forEach((menu) => document.body.appendChild(menu));
+  const lineSpacingPreview = new Map();
+  const clearLineSpacingPreview = () => {
+    lineSpacingPreview.forEach((previousValue, paragraph) => {
+      if (previousValue.value) paragraph.style.setProperty('line-height', previousValue.value, previousValue.priority);
+      else paragraph.style.removeProperty('line-height');
+    });
+    lineSpacingPreview.clear();
+  };
   const closeParagraphMenus = () => {
+    clearLineSpacingPreview();
     Object.values(paragraphMenus).forEach((menu) => {
       menu.hidden = true;
     });
@@ -2286,11 +3370,15 @@
       ? bounds.bottom + 4
       : Math.max(4, bounds.top - height - 4)}px`;
   };
-  const selectedParagraphs = () => {
-    focusEditor();
+  const selectedParagraphs = (restoreFocus = true) => {
+    if (restoreFocus) focusEditor();
     const selection = window.getSelection();
-    if (!selection || !selection.rangeCount) return [editor.querySelector('p') || editor];
-    const range = selection.getRangeAt(0);
+    const range = selection?.rangeCount && editor.contains(selection.anchorNode)
+      ? selection.getRangeAt(0)
+      : savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)
+        ? savedEditorRange
+        : null;
+    if (!range) return [editor.querySelector('p') || editor];
     const startElement = range.startContainer instanceof Element
       ? range.startContainer
       : range.startContainer.parentElement;
@@ -2331,6 +3419,22 @@
     scheduleSave();
     queueAutoPagination();
   };
+  const applyParagraphShading = (color) => {
+    focusEditor();
+    const selection = window.getSelection();
+    const selectedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    selectedParagraphs().forEach((paragraph) => {
+      if (color) paragraph.style.backgroundColor = color;
+      else paragraph.style.removeProperty('background-color');
+    });
+    if (selectedRange && editor.contains(selectedRange.commonAncestorContainer)) {
+      selection.removeAllRanges();
+      selection.addRange(selectedRange);
+      preserveSelectedRange(selectedRange);
+    }
+    scheduleSave();
+    queueAutoPagination();
+  };
   document.querySelectorAll('[data-list-menu]').forEach((trigger) => {
     trigger.addEventListener('pointerdown', (event) => event.preventDefault());
     trigger.addEventListener('click', () => {
@@ -2342,6 +3446,69 @@
       trigger.setAttribute('aria-expanded', 'true');
       positionParagraphMenu(menu, trigger);
     });
+  });
+  const getUnderlineTargets = (range) => {
+    if (!range || range.collapsed || !editor.contains(range.commonAncestorContainer)) return [];
+    const targets = new Set();
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const textNode = walker.currentNode;
+      if (!textNode.textContent || !range.intersectsNode(textNode)) continue;
+      let element = textNode.parentElement;
+      while (element && element !== editor) {
+        if (element.tagName === 'U' ||
+          getComputedStyle(element).textDecorationLine.split(/\s+/).includes('underline')) {
+          targets.add(element);
+          break;
+        }
+        element = element.parentElement;
+      }
+    }
+    return [...targets];
+  };
+  const applyUnderlineFormatting = (style, color = null) => {
+    focusEditor();
+    const selection = window.getSelection();
+    const initialRange = selection?.rangeCount && editor.contains(selection.anchorNode)
+      ? selection.getRangeAt(0)
+      : savedEditorRange;
+    if (!initialRange || !editor.contains(initialRange.commonAncestorContainer)) return;
+    const wasUnderlined = document.queryCommandState('underline');
+    if (style === 'none') {
+      if (!initialRange.collapsed && wasUnderlined) runCommand('underline');
+      closeParagraphMenus();
+      return;
+    }
+    if (style && !wasUnderlined) runCommand('underline');
+    const currentSelection = window.getSelection();
+    const range = currentSelection?.rangeCount && editor.contains(currentSelection.anchorNode)
+      ? currentSelection.getRangeAt(0)
+      : savedEditorRange;
+    const targets = getUnderlineTargets(range);
+    targets.forEach((target) => {
+      if (style) target.style.textDecorationStyle = style;
+      if (color) target.style.textDecorationColor = color;
+    });
+    if (range && !range.collapsed) preserveSelectedRange(range);
+    if (style || color) {
+      const styleLabel = style === 'double' ? 'Double'
+        : style === 'dotted' ? 'Dotted'
+          : style === 'dashed' ? 'Dashed'
+            : style === 'wavy' ? 'Wavy'
+              : 'Single';
+      scheduleSave(color && !style ? 'Changed Underline Color' : `Applied ${styleLabel} Underline`);
+      updateTextFormatButtons();
+      updateCounts();
+      queueAutoPagination();
+    }
+    closeParagraphMenus();
+  };
+  document.querySelectorAll('[data-underline-style]').forEach((button) => {
+    button.addEventListener('pointerdown', (event) => event.preventDefault());
+    button.addEventListener('click', () => applyUnderlineFormatting(button.dataset.underlineStyle));
+  });
+  document.getElementById('underline-color').addEventListener('input', (event) => {
+    applyUnderlineFormatting(null, event.currentTarget.value);
   });
   const findSelectedList = () => {
     const selection = window.getSelection();
@@ -2420,7 +3587,22 @@
   });
   document.querySelectorAll('[data-line-spacing]').forEach((option) => {
     option.addEventListener('pointerdown', (event) => event.preventDefault());
+    const previewLineSpacing = () => {
+      clearLineSpacingPreview();
+      selectedParagraphs(false).forEach((paragraph) => {
+        lineSpacingPreview.set(paragraph, {
+          value: paragraph.style.getPropertyValue('line-height'),
+          priority: paragraph.style.getPropertyPriority('line-height')
+        });
+        paragraph.style.lineHeight = option.dataset.lineSpacing;
+      });
+    };
+    option.addEventListener('pointerenter', previewLineSpacing);
+    option.addEventListener('pointerleave', clearLineSpacingPreview);
+    option.addEventListener('focus', previewLineSpacing);
+    option.addEventListener('blur', clearLineSpacingPreview);
     option.addEventListener('click', () => {
+      clearLineSpacingPreview();
       const spacing = option.dataset.lineSpacing;
       const select = document.getElementById('line-spacing');
       if (!Array.from(select.options).some((item) => item.value === spacing)) {
@@ -2436,7 +3618,7 @@
     option.addEventListener('click', () => {
       selectedParagraphs().forEach((paragraph) => {
         paragraph.style[option.dataset.paragraphSpace === 'before' ? 'marginTop' : 'marginBottom'] =
-          option.dataset.paragraphSpace === 'before' ? '12px' : '0px';
+          option.dataset.paragraphSpace === 'before' ? '8pt' : '0pt';
       });
       scheduleSave();
       queueAutoPagination();
@@ -2445,7 +3627,7 @@
   });
   document.querySelector('[data-spacing-step]').addEventListener('click', () => {
     const select = document.getElementById('line-spacing');
-    const values = [1, 1.15, 1.5, 2, 2.5, 3];
+    const values = [1, 1.15, 1.5, 1.7, 2, 2.5, 3];
     const next = values.find((value) => value > Number(select.value)) || values[0];
     if (!Array.from(select.options).some((item) => Number(item.value) === next)) {
       select.add(new Option(next, next));
@@ -2471,7 +3653,8 @@
     closeParagraphMenus();
   });
   document.addEventListener('click', (event) => {
-    if (!event.target.closest('.paragraph-group') && !event.target.closest('.paragraph-menu')) closeParagraphMenus();
+    if (!event.target.closest('.paragraph-group, .underline-split-tool') &&
+      !event.target.closest('.paragraph-menu')) closeParagraphMenus();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeParagraphMenus();
@@ -2486,13 +3669,16 @@
     runCommand('removeFormat');
     editor.style.fontFamily = "'Noto Nastaliq Urdu', 'Noto Naskh Arabic', serif";
     editor.style.fontSize = '';
-    editor.style.lineHeight = '1.8';
+    editor.style.lineHeight = '1.6';
   }
   document.getElementById('text-color').addEventListener('input', (event) => {
     runCommand('foreColor', event.target.value);
   });
   document.getElementById('highlight-color').addEventListener('input', (event) => {
     runCommand('hiliteColor', event.target.value);
+  });
+  document.getElementById('paragraph-shading-color').addEventListener('input', (event) => {
+    applyParagraphShading(event.target.value);
   });
   const themeHues = [0, 350, 28, 58, 102, 180, 210, 220, 270, 315];
   const themePaletteColors = [
@@ -2565,6 +3751,22 @@
       clearHighlight.textContent = 'No color';
       clearHighlight.setAttribute('aria-label', 'Remove text highlight');
       palette.append(clearHighlight);
+    } else if (picker.dataset.colorPicker === 'shading') {
+      const clearShading = document.createElement('button');
+      clearShading.type = 'button';
+      clearShading.className = 'color-clear-option';
+      clearShading.dataset.clearShading = 'true';
+      clearShading.textContent = 'No color';
+      clearShading.setAttribute('aria-label', 'Remove paragraph shading');
+      palette.append(clearShading);
+    } else if (input.id === 'page-color-input') {
+      const clearPageColor = document.createElement('button');
+      clearPageColor.type = 'button';
+      clearPageColor.className = 'color-clear-option';
+      clearPageColor.dataset.clearPageColor = 'true';
+      clearPageColor.textContent = 'No color';
+      clearPageColor.setAttribute('aria-label', 'Reset page color');
+      palette.append(clearPageColor);
     }
     const customOption = palette.querySelector('.more-colors');
     if (customOption && customOption.tagName === 'LABEL') customOption.firstChild.textContent = 'CUSTOM';
@@ -2602,23 +3804,47 @@
       event.preventDefault();
       event.stopPropagation();
       document.querySelectorAll('.color-picker.open').forEach((openPicker) => {
-        if (openPicker !== picker) openPicker.classList.remove('open');
+        if (openPicker !== picker) {
+          openPicker.classList.remove('open');
+          openPicker.querySelector('.color-tool')?.setAttribute('aria-expanded', 'false');
+        }
       });
-      picker.classList.toggle('open');
+      const isOpen = picker.classList.toggle('open');
+      colorTool.setAttribute('aria-expanded', String(isOpen));
     });
     palette.addEventListener('click', (event) => {
       const clearHighlight = event.target.closest('[data-clear-highlight]');
       if (clearHighlight) {
         event.preventDefault();
         picker.classList.remove('open');
+        colorTool.setAttribute('aria-expanded', 'false');
         colorTool.querySelector('span').style.backgroundColor = 'transparent';
         runCommand('hiliteColor', 'transparent');
+        return;
+      }
+      const clearShading = event.target.closest('[data-clear-shading]');
+      if (clearShading) {
+        event.preventDefault();
+        picker.classList.remove('open');
+        colorTool.setAttribute('aria-expanded', 'false');
+        colorTool.querySelector('span').style.backgroundColor = 'transparent';
+        applyParagraphShading('');
+        return;
+      }
+      const clearPageColor = event.target.closest('[data-clear-page-color]');
+      if (clearPageColor) {
+        event.preventDefault();
+        picker.classList.remove('open');
+        colorTool.setAttribute('aria-expanded', 'false');
+        input.value = '#ffffff';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
         return;
       }
       const swatch = event.target.closest('[data-color]');
       if (!swatch) return;
       event.preventDefault();
       picker.classList.remove('open');
+      colorTool.setAttribute('aria-expanded', 'false');
       input.value = swatch.dataset.color;
       colorTool.querySelector('span').style.backgroundColor = swatch.dataset.color;
       if (picker.dataset.colorPicker === 'table-border') {
@@ -2640,12 +3866,17 @@
         }
         return;
       }
+      if (picker.dataset.colorPicker === 'underline') {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+      }
       if (picker.classList.contains('color-input-picker')) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         return;
       }
       const isHighlight = picker.dataset.colorPicker === 'highlight';
-      runCommand(isHighlight ? 'hiliteColor' : 'foreColor', swatch.dataset.color);
+      if (picker.dataset.colorPicker === 'shading') applyParagraphShading(swatch.dataset.color);
+      else runCommand(isHighlight ? 'hiliteColor' : 'foreColor', swatch.dataset.color);
       if (picker.dataset.colorPicker === 'text') {
         document.querySelector('.text-color-tool > span').style.backgroundColor = swatch.dataset.color;
       }
@@ -2662,6 +3893,7 @@
     });
     input.addEventListener('input', (event) => {
       picker.classList.remove('open');
+      colorTool.setAttribute('aria-expanded', 'false');
       colorTool.querySelector('span').style.backgroundColor = event.target.value;
       if (picker.dataset.colorPicker === 'table-border') {
         const table = getActiveTable();
@@ -2685,7 +3917,10 @@
   });
   document.addEventListener('click', (event) => {
     if (!event.target.closest('.color-picker')) {
-      document.querySelectorAll('.color-picker.open').forEach((picker) => picker.classList.remove('open'));
+      document.querySelectorAll('.color-picker.open').forEach((picker) => {
+        picker.classList.remove('open');
+        picker.querySelector('.color-tool')?.setAttribute('aria-expanded', 'false');
+      });
     }
   });
   const insertLink = () => {
@@ -2968,8 +4203,8 @@
       return false;
     }
     if (!Number.isFinite(cellWidth) || cellWidth < 40 || cellWidth > 240 ||
-      !Number.isFinite(cellHeight) || cellHeight < 12 || cellHeight > 120) {
-      showToast('Cell width must be 40–240 px and cell height 12–120 px.');
+      !Number.isFinite(cellHeight) || cellHeight < MIN_TABLE_ROW_HEIGHT || cellHeight > 120) {
+      showToast(`Cell width must be 40–240 px and cell height ${MIN_TABLE_ROW_HEIGHT}–120 px.`);
       return false;
     }
 
@@ -2988,8 +4223,12 @@
     for (let row = 0; row < rows; row += 1) {
       const tableRow = body.insertRow();
       tableRow.style.height = `${cellHeight}px`;
+      if (cellHeight > MIN_TABLE_ROW_HEIGHT) tableRow.dataset.tableRowHeight = 'manual';
       for (let column = 0; column < columns; column += 1) {
         const cell = tableRow.insertCell();
+        const paragraph = document.createElement('p');
+        paragraph.append(document.createElement('br'));
+        cell.append(paragraph);
         cell.style.width = `${100 / columns}%`;
         cell.style.height = `${cellHeight}px`;
         cell.style.textAlign = 'right';
@@ -3009,7 +4248,7 @@
     }
     editor.focus();
     const range = document.createRange();
-    range.selectNodeContents(firstCell);
+    range.selectNodeContents(firstCell.querySelector('p') || firstCell);
     range.collapse(true);
     const selection = window.getSelection();
     selection.removeAllRanges();
@@ -3034,56 +4273,8 @@
       document.getElementById('table-create-columns').value
     );
   });
-  const shapeGroups = [
-    ['Basic Shapes', [
-      ['rectangle', 'Rectangle'],
-      ['square', 'Square'],
-      ['circle', 'Circle'],
-      ['ellipse', 'Oval'],
-      ['triangle', 'Triangle'],
-      ['diamond', 'Diamond'],
-      ['pentagon', 'Pentagon'],
-      ['hexagon', 'Hexagon'],
-      ['star', 'Star'],
-      ['heart', 'Heart'],
-      ['arrow', 'Arrow'],
-      ['chevron', 'Chevron'],
-      ['line', 'Line']
-    ]],
-    ['Extras', [
-      ['rounded-rectangle', 'Rounded rectangle'],
-      ['trapezoid', 'Trapezoid'],
-      ['parallelogram', 'Parallelogram'],
-      ['plus', 'Plus'],
-      ['cloud', 'Cloud'],
-      ['rectangular-callout', 'Callout'],
-      ['oval-callout', 'Oval callout']
-    ]]
-  ];
   const shapeLibrary = document.getElementById('shape-library');
-  shapeGroups.forEach(([category, shapes]) => {
-    const section = document.createElement('section');
-    section.className = 'shape-category';
-    const heading = document.createElement('strong');
-    heading.textContent = category;
-    const grid = document.createElement('div');
-    grid.className = 'shape-library-grid';
-    shapes.forEach(([type, label]) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.insertShape = type;
-      button.title = label;
-      button.setAttribute('aria-label', label);
-      const preview = document.createElement('span');
-      preview.className = 'shape-preview';
-      preview.dataset.preview = type;
-      if (polygonShapeTypes.has(type)) preview.dataset.shapeGeometry = 'polygon';
-      button.append(preview);
-      grid.append(button);
-    });
-    section.append(heading, grid);
-    shapeLibrary.append(section);
-  });
+  window.WordShapesEngine.renderGallery(shapeLibrary);
   shapeLibrary.addEventListener('pointerdown', (event) => {
     if (event.target.closest('[data-insert-shape]')) event.preventDefault();
   });
@@ -3091,12 +4282,13 @@
     const button = event.target.closest('[data-insert-shape]');
     if (!button) return;
     const type = button.dataset.insertShape;
-    if (!/^[a-z][a-z0-9-]{0,30}$/.test(type)) return;
+    const shapeDefinition = window.WordShapesEngine.get(type);
+    if (!shapeDefinition) return;
     closeInsertMenus();
     const width = type.endsWith('-button') ? 90 : ['square', 'circle'].includes(type) ? 100 : 140;
     const height = type === 'line' ? 2 : 90;
     const shapeHeight = type === 'square' || type === 'circle' ? 100 : height;
-    const geometry = polygonShapeTypes.has(type) ? 'polygon' : 'basic';
+    const geometry = shapeDefinition.geometry;
     const lineColor = '#176b9a';
     const fillColor = '#dce8f5';
     const backgroundColor = geometry === 'polygon' || type === 'line' ? lineColor : fillColor;
@@ -3106,6 +4298,7 @@
     if (shape) {
       shape.style.width = `${width}px`;
       shape.style.height = `${shapeHeight}px`;
+      window.WordShapesEngine.applyGeometry(shape, type);
       shape.style.setProperty('--shape-line-color', lineColor);
       shape.style.setProperty('--shape-fill-color', fillColor);
       shape.style.setProperty('--shape-border-width', `${shape.dataset.shapeLineWidth}px`);
@@ -3195,7 +4388,6 @@
     } else {
       if (textBox.style.minWidth !== '20px') textBox.style.minWidth = '20px';
     }
-    if (textBox.style.height !== 'auto') textBox.style.height = 'auto';
     if (activeShape === textBox) {
       window.cancelAnimationFrame(textBoxManipulatorFrame);
       textBoxManipulatorFrame = window.requestAnimationFrame(() => {
@@ -3216,8 +4408,10 @@
     { button: document.getElementById('table-button'), menu: document.getElementById('table-menu') },
     { button: document.getElementById('page-number-button'), menu: document.getElementById('page-number-menu') },
     { button: document.getElementById('emoji-button'), menu: document.getElementById('emoji-menu') },
-    { button: document.getElementById('shapes-button'), menu: document.getElementById('shapes-menu') }
-  ];
+    { button: document.getElementById('shapes-button'), menu: document.getElementById('shapes-menu') },
+    { button: document.getElementById('header-insert-button'), menu: document.getElementById('header-template-menu') },
+    { button: document.getElementById('footer-insert-button'), menu: document.getElementById('footer-template-menu') }
+  ].filter(({ menu }) => menu);
   insertMenus.forEach(({ menu }) => document.body.append(menu));
   const closeInsertMenus = () => insertMenus.forEach(({ button, menu }) => {
     menu.hidden = true;
@@ -3399,6 +4593,45 @@
     scheduleSave();
     paragraph.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
+  function applyDocumentRegionTemplate(region, templateName = 'blank') {
+    if (!region) return null;
+    const supportedTemplates = ['blank', 'three-columns', 'austin', 'banded'];
+    region.dataset.template = supportedTemplates.includes(templateName) ? templateName : 'blank';
+    region.style.display = '';
+    region.style.gridTemplateColumns = '';
+    region.style.alignItems = '';
+    region.style.gap = '';
+    region.style.padding = '';
+    region.style.background = '';
+    region.style.border = '';
+    region.style.borderRadius = '';
+    region.querySelectorAll('p').forEach((item) => item.removeAttribute('style'));
+    return region;
+  }
+  function setDocumentRegionTemplate(region, templateName) {
+    const supportedTemplates = ['blank', 'three-columns', 'austin', 'banded'];
+    const selectedTemplate = supportedTemplates.includes(templateName) ? templateName : 'blank';
+    const footerPageNumber = region.dataset.documentRegion === 'footer' &&
+      ['austin', 'banded'].includes(selectedTemplate);
+    region.replaceChildren();
+    const paragraphCount = selectedTemplate === 'three-columns' ? 3 : 1;
+    for (let index = 0; index < paragraphCount; index += 1) {
+      const paragraph = document.createElement('p');
+      if (!footerPageNumber) paragraph.append(document.createElement('br'));
+      region.append(paragraph);
+    }
+    if (footerPageNumber) {
+      const paragraph = region.querySelector('p');
+      if (selectedTemplate === 'austin') paragraph.append(document.createTextNode('Pg. '));
+      const pageNumber = document.createElement('span');
+      pageNumber.dataset.pageNumberField = 'number';
+      pageNumber.setAttribute('contenteditable', 'false');
+      pageNumber.textContent = '1';
+      paragraph.append(pageNumber);
+    }
+    region.dataset.empty = String(!region.textContent.trim());
+    applyDocumentRegionTemplate(region, selectedTemplate);
+  }
   function ensureDocumentRegion(name, alignment = 'center') {
     let region = editor.querySelector(`[data-document-region="${name}"]`);
     if (!region) {
@@ -3417,20 +4650,40 @@
     } else {
       region.style.textAlign = alignment;
     }
+    if (!region.dataset.template) region.dataset.template = 'blank';
+    applyDocumentRegionTemplate(region, region.dataset.template);
     syncDocumentHeaderSpacing();
     return region;
   }
-  function focusDocumentRegion(region) {
+  function focusDocumentRegion(region, clientX = null, clientY = null) {
+    const activeRegion = editor.querySelector('[data-document-region][contenteditable="true"]');
+    if (activeRegion && activeRegion !== region) lockDocumentRegion(activeRegion);
     const paragraph = region.querySelector('p') || region;
-    const range = document.createRange();
-    range.selectNodeContents(paragraph);
-    range.collapse(false);
     const selection = window.getSelection();
     editor.dataset.documentEditing = region.dataset.documentRegion;
     editor.setAttribute('contenteditable', 'false');
     region.setAttribute('contenteditable', 'true');
     region.tabIndex = 0;
-    region.focus();
+    region.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    region.focus({ preventScroll: true });
+    let range = null;
+    if (Number.isFinite(clientX) && Number.isFinite(clientY)) {
+      range = document.caretRangeFromPoint?.(clientX, clientY) || null;
+      if (range && !region.contains(range.startContainer)) range = null;
+    } else {
+      const regionBounds = region.getBoundingClientRect();
+      const paragraphBounds = paragraph.getBoundingClientRect();
+      range = document.caretRangeFromPoint?.(
+        regionBounds.left + regionBounds.width / 2,
+        paragraphBounds.top + paragraphBounds.height / 2
+      ) || null;
+      if (range && !region.contains(range.startContainer)) range = null;
+    }
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(paragraph);
+      range.collapse(true);
+    }
     selection.removeAllRanges();
     selection.addRange(range);
     savedEditorRange = range.cloneRange();
@@ -3450,9 +4703,28 @@
     syncDocumentHeaderSpacing();
     scheduleSave();
   }
+  function isDocumentRegionBandClick(region, clientY) {
+    const pageBounds = editor.getBoundingClientRect();
+    const pageScale = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    const styles = getComputedStyle(editor);
+    const regionBounds = region.getBoundingClientRect();
+    if (region.dataset.documentRegion === 'header') {
+      const bandBottom = Math.max(
+        pageBounds.top + rulerPixels(styles.paddingTop) * pageScale,
+        regionBounds.bottom
+      );
+      return clientY >= pageBounds.top && clientY <= bandBottom;
+    }
+    const bandTop = Math.min(
+      pageBounds.bottom - rulerPixels(styles.paddingBottom) * pageScale,
+      regionBounds.top
+    );
+    return clientY >= bandTop && clientY <= pageBounds.bottom;
+  }
   document.addEventListener('pointerdown', (event) => {
     const region = editor.querySelector('[data-document-region][contenteditable="true"]');
-    if (!region || region.contains(event.target)) return;
+    if (!region || region.contains(event.target) || !editor.contains(event.target)) return;
+    if (isDocumentRegionBandClick(region, event.clientY)) return;
     rememberEditorSelection();
     const target = event.target instanceof Element ? event.target : event.target.parentElement;
     if (target?.closest('.ribbon, .context-toolbar, .insert-menu, .layout-menu')) return;
@@ -3460,32 +4732,80 @@
     if (editor.contains(event.target)) editor.dataset.documentEditing = 'body';
     else delete editor.dataset.documentEditing;
   }, true);
-  function toggleDocumentRegion(name) {
+  function removeDocumentRegion(name) {
     const region = editor.querySelector(`.document-${name}`);
-    if (region) {
-      lockDocumentRegion(region);
-      if (savedEditorRange && region.contains(savedEditorRange.commonAncestorContainer)) {
-        savedEditorRange = null;
-      }
-      region.remove();
-    } else {
-      ensureDocumentRegion(name).scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    if (!region) return;
+    lockDocumentRegion(region);
+    if (savedEditorRange && region.contains(savedEditorRange.commonAncestorContainer)) savedEditorRange = null;
+    region.remove();
     syncDocumentHeaderSpacing();
     updateCounts();
     scheduleSave();
   }
-  document.getElementById('header-insert-button').addEventListener('click', () => toggleDocumentRegion('header'));
-  document.getElementById('footer-insert-button').addEventListener('click', () => toggleDocumentRegion('footer'));
-  editor.addEventListener('dblclick', (event) => {
-    const region = event.target.closest('[data-document-region]');
-    if (!region || !editor.contains(region)) return;
-    focusDocumentRegion(region);
+  const headerInsertButton = document.getElementById('header-insert-button');
+  const footerInsertButton = document.getElementById('footer-insert-button');
+  const documentRegionMenus = [document.getElementById('header-template-menu'), document.getElementById('footer-template-menu')];
+  documentRegionMenus.forEach((menu) => {
+    menu.querySelectorAll('[data-document-template]').forEach((button) => {
+      button.addEventListener('pointerdown', (event) => event.preventDefault());
+      button.addEventListener('click', () => {
+        const name = menu.dataset.documentRegion;
+        const region = ensureDocumentRegion(name);
+        setDocumentRegionTemplate(region, button.dataset.documentTemplate);
+        closeInsertMenus();
+        focusDocumentRegion(region);
+        updateCounts();
+        scheduleSave();
+      });
+    });
+    menu.querySelectorAll('[data-document-region-action]').forEach((button) => {
+      button.addEventListener('pointerdown', (event) => event.preventDefault());
+      button.addEventListener('click', () => {
+        const name = menu.dataset.documentRegion;
+        closeInsertMenus();
+        if (button.dataset.documentRegionAction === 'remove') {
+          removeDocumentRegion(name);
+          return;
+        }
+        focusDocumentRegion(ensureDocumentRegion(name));
+      });
+    });
+  });
+  editor.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target : event.target.parentElement;
+    const region = target?.closest('[data-document-region]');
+    if (!region || !editor.contains(region) ||
+      region.getAttribute('contenteditable') === 'true' &&
+      editor.dataset.documentEditing === region.dataset.documentRegion) return;
+    focusDocumentRegion(region, event.clientX, event.clientY);
     event.preventDefault();
+  });
+  editor.addEventListener('dblclick', (event) => {
+    const target = event.target instanceof Element ? event.target : event.target.parentElement;
+    const region = target?.closest('[data-document-region]');
+    if (region && editor.contains(region)) {
+      focusDocumentRegion(region);
+      event.preventDefault();
+      return;
+    }
+    const pageBounds = editor.getBoundingClientRect();
+    const pageScale = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    const headerAreaHeight = rulerPixels(getComputedStyle(editor).paddingTop) * pageScale;
+    const footerAreaHeight = rulerPixels(getComputedStyle(editor).paddingBottom) * pageScale;
+    if (event.clientY >= pageBounds.top && event.clientY <= pageBounds.top + headerAreaHeight) {
+      focusDocumentRegion(ensureDocumentRegion('header'));
+      event.preventDefault();
+      return;
+    }
+    if (event.clientY >= pageBounds.bottom - footerAreaHeight && event.clientY <= pageBounds.bottom) {
+      focusDocumentRegion(ensureDocumentRegion('footer'));
+      event.preventDefault();
+    }
   });
   editor.addEventListener('focusout', (event) => {
     const region = event.target.closest('[data-document-region]');
-    if (!region || region.contains(event.relatedTarget) || event.relatedTarget === editor) return;
+    if (!region || region.contains(event.relatedTarget) || event.relatedTarget === editor ||
+      !editor.contains(event.relatedTarget)) return;
     const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
     if (nextTarget?.closest('.ribbon, .context-toolbar, .insert-menu, .layout-menu')) return;
     lockDocumentRegion(region);
@@ -3506,34 +4826,76 @@
     if (header && editor.contains(header)) syncDocumentHeaderSpacing();
   });
   document.getElementById('image-button').addEventListener('click', () => {
+    const workspace = document.querySelector('.document-workspace');
+    const workspaceBounds = workspace.getBoundingClientRect();
+    const pageBounds = editor.getBoundingClientRect();
+    const visibleLeft = Math.max(workspaceBounds.left + workspace.clientLeft, pageBounds.left);
+    const visibleRight = Math.min(workspaceBounds.right, pageBounds.right);
+    const visibleTop = Math.max(workspaceBounds.top + workspace.clientTop, pageBounds.top);
+    const visibleBottom = Math.min(workspaceBounds.bottom, pageBounds.bottom);
+    const scaleX = pageBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = pageBounds.height / Math.max(editor.offsetHeight, 1);
+    pendingImagePosition = {
+      centerX: (visibleLeft + visibleRight - 2 * pageBounds.left) / (2 * scaleX),
+      centerY: (visibleTop + visibleBottom - 2 * pageBounds.top) / (2 * scaleY),
+      scrollTop: workspace.scrollTop,
+      scrollLeft: workspace.scrollLeft
+    };
     document.getElementById('image-input').click();
   });
+  let pendingImagePosition = null;
+  const placeImageInVisibleArea = (image, position) => {
+    if (!position || !editor.contains(image)) return;
+    const workspace = document.querySelector('.document-workspace');
+    workspace.scrollTop = position.scrollTop;
+    workspace.scrollLeft = position.scrollLeft;
+    const maxLeft = Math.max(0, editor.clientWidth - image.offsetWidth);
+    const maxTop = Math.max(0, editor.clientHeight - image.offsetHeight);
+    image.style.left = `${Math.max(0, Math.min(maxLeft, position.centerX - image.offsetWidth / 2))}px`;
+    image.style.top = `${Math.max(0, Math.min(maxTop, position.centerY - image.offsetHeight / 2))}px`;
+  };
   document.getElementById('image-input').addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (!file) return;
     if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
       window.alert('Please select a PNG, JPEG, GIF, or WebP image.');
+      pendingImagePosition = null;
       event.target.value = '';
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
       window.alert('Image size must be under 2 MB.');
+      pendingImagePosition = null;
       event.target.value = '';
       return;
     }
     const reader = new FileReader();
+    const imagePosition = pendingImagePosition;
     reader.addEventListener('load', () => {
       if (typeof reader.result === 'string') {
         insertHtml(`<img src="${reader.result}" alt="Inserted image" width="240" data-image-wrap="inline" data-image-align="center" data-pending-image="true">`);
         activeImage = editor.querySelector('img[data-pending-image="true"]');
         if (activeImage) {
           activeImage.removeAttribute('data-pending-image');
+          activeImage.setAttribute('contenteditable', 'false');
           setImageWrap(activeImage, 'free');
-          showImageToolbar(activeImage);
+          const insertedImage = activeImage;
+          placeImageInVisibleArea(insertedImage, imagePosition);
+          if (!activeImage.complete) {
+            insertedImage.addEventListener('load', () => {
+              placeImageInVisibleArea(insertedImage, imagePosition);
+              if (activeImage === insertedImage) refreshImageManipulators(insertedImage);
+            }, { once: true });
+          }
+          showImageToolbar(insertedImage);
         }
       }
+      pendingImagePosition = null;
     });
-    reader.addEventListener('error', () => window.alert('Could not read the image.'));
+    reader.addEventListener('error', () => {
+      pendingImagePosition = null;
+      window.alert('Could not read the image.');
+    });
     reader.readAsDataURL(file);
     event.target.value = '';
   });
@@ -3561,9 +4923,173 @@
   tableCaretOverlay.setAttribute('aria-hidden', 'true');
   tableCaretOverlay.hidden = true;
   document.body.append(tableCaretOverlay);
+  let tableCaretStabilizationTimer = 0;
+  const stabilizeTableCaret = () => {
+    if (tableCaretOverlay.hidden) return;
+    document.body.classList.add('table-caret-stable');
+    window.clearTimeout(tableCaretStabilizationTimer);
+    tableCaretStabilizationTimer = window.setTimeout(() => {
+      document.body.classList.remove('table-caret-stable');
+    }, 250);
+  };
   const tableLayoutPanel = document.querySelector('[data-panel="table-layout"]');
   const tableLayoutTab = document.getElementById('table-layout-tab');
-  const MIN_TABLE_ROW_HEIGHT = 10;
+  const shapeFormatTab = document.getElementById('shape-format-tab');
+  const textboxFormatTab = document.getElementById('textbox-format-tab');
+  const pictureFormatTab = document.getElementById('picture-format-tab');
+  const hideShapeFormatTabs = () => {
+    shapeFormatTab.hidden = true;
+    textboxFormatTab.hidden = true;
+  };
+  const MIN_TABLE_ROW_HEIGHT = 20;
+  const tableTextMetricsContext = document.createElement('canvas').getContext('2d');
+  const normalizeTableCellTextBlocks = (table) => {
+    const blockTags = /^(?:P|DIV|UL|OL|LI|H[1-6]|BLOCKQUOTE|TABLE)$/;
+    table.querySelectorAll('td, th').forEach((cell) => {
+      if (Array.from(cell.children).some((child) => blockTags.test(child.tagName))) return;
+      if (!Array.from(cell.childNodes).some((node) =>
+        node.nodeType === Node.TEXT_NODE ? node.textContent.trim() : node instanceof Element)) return;
+      const paragraph = document.createElement('p');
+      const selection = window.getSelection();
+      const range = selection?.rangeCount && cell.contains(selection.anchorNode)
+        ? selection.getRangeAt(0).cloneRange()
+        : null;
+      while (cell.firstChild) paragraph.append(cell.firstChild);
+      cell.append(paragraph);
+      if (range && selection) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    });
+  };
+  const updateTableTextMetrics = (table) => {
+    table.querySelectorAll('td > p, th > p').forEach((paragraph) => {
+      const textNodes = [];
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode();
+      while (textNode) {
+        if (textNode.textContent.trim()) textNodes.push(textNode);
+        textNode = walker.nextNode();
+      }
+      const caretSpans = Array.from(paragraph.querySelectorAll('[data-format-caret="true"]'));
+      if ((!textNodes.length && !caretSpans.length) || !tableTextMetricsContext) {
+        paragraph.classList.remove('table-ink-metrics');
+        paragraph.style.removeProperty('--table-text-line-height');
+        paragraph.style.removeProperty('--table-text-ink-offset');
+        return;
+      }
+
+      let lineHeight = 0;
+      let inkOffset = 0;
+      textNodes.forEach((node) => {
+        const style = getComputedStyle(node.parentElement || paragraph);
+        tableTextMetricsContext.font = style.font;
+        const metrics = tableTextMetricsContext.measureText(node.textContent);
+        const inkHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+        const fontHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent;
+        if (!(inkHeight > 0) || !(fontHeight > 0)) return;
+        const offset = (inkHeight - fontHeight) / 2 +
+          metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent;
+        if (inkHeight > lineHeight) {
+          lineHeight = inkHeight;
+          inkOffset = offset;
+        }
+      });
+      caretSpans.forEach((span) => {
+        const fontSize = Number.parseFloat(getComputedStyle(span).fontSize) || 0;
+        lineHeight = Math.max(lineHeight, fontSize * 1.2);
+      });
+
+      if (!(lineHeight > 0)) {
+        paragraph.classList.remove('table-ink-metrics');
+        paragraph.style.removeProperty('--table-text-line-height');
+        paragraph.style.removeProperty('--table-text-ink-offset');
+        return;
+      }
+      paragraph.classList.add('table-ink-metrics');
+      paragraph.style.setProperty('--table-text-line-height', `${lineHeight}px`);
+      paragraph.style.setProperty('--table-text-ink-offset', `${inkOffset}px`);
+    });
+    table.querySelectorAll('td, th').forEach((cell) => {
+      let fontSize = 0;
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode();
+      while (textNode) {
+        if (textNode.textContent.trim()) {
+          fontSize = Math.max(
+            fontSize,
+            Number.parseFloat(getComputedStyle(textNode.parentElement || cell).fontSize) || 0
+          );
+        }
+        textNode = walker.nextNode();
+      }
+      if (fontSize > 0) {
+        cell.style.setProperty('--table-text-top-padding', `${Math.max(3, fontSize * 0.3)}px`);
+      } else {
+        cell.style.removeProperty('--table-text-top-padding');
+      }
+    });
+  };
+  const getMinimumTableRowHeight = (row) => {
+    let minHeight = Array.from(row.cells).some((cell) => cell.textContent.trim())
+      ? 0
+      : MIN_TABLE_ROW_HEIGHT;
+    Array.from(row.cells).forEach((cell) => {
+      const style = getComputedStyle(cell);
+      const children = Array.from(cell.children).filter((child) =>
+        /^(P|DIV|LI|H[1-6]|BLOCKQUOTE|UL|OL)$/.test(child.tagName));
+      let contentHeight = 0;
+      if (children.length) {
+        const bounds = children.map((child) => child.getBoundingClientRect());
+        contentHeight = Math.max(...bounds.map((rect) => rect.bottom)) -
+          Math.min(...bounds.map((rect) => rect.top));
+      } else if (cell.textContent.trim()) {
+        const contentRange = document.createRange();
+        contentRange.selectNodeContents(cell);
+        const contentRects = Array.from(contentRange.getClientRects());
+        const lineTops = new Set(contentRects.map((rect) => Math.round(rect.top)));
+        const lineHeight = Math.max(
+          Number.parseFloat(style.lineHeight) || 0,
+          ...Array.from(cell.querySelectorAll('*'), (element) =>
+            Number.parseFloat(getComputedStyle(element).lineHeight) || 0)
+        );
+        contentHeight = lineHeight * Math.max(1, lineTops.size);
+      }
+      const cellInsets = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) +
+        Math.max(parseFloat(style.borderTopWidth), parseFloat(style.borderBottomWidth));
+      minHeight = Math.max(minHeight, Math.ceil((contentHeight + cellInsets) / Math.max(1, cell.rowSpan)));
+    });
+    return minHeight;
+  };
+  const releaseContentSizedRows = (table, includeManuallySizedRows = false) => {
+    Array.from(table.rows).forEach((row) => {
+      if (!includeManuallySizedRows && row.dataset.tableRowHeight === 'manual') return;
+      delete row.dataset.tableRowHeight;
+      row.style.height = '';
+      Array.from(row.cells).forEach((cell) => { cell.style.height = ''; });
+    });
+  };
+  const normalizeTableRowHeights = (table) => {
+    normalizeTableCellTextBlocks(table);
+    updateTableTextMetrics(table);
+    Array.from(table.rows).forEach((row) => {
+      const minHeight = getMinimumTableRowHeight(row);
+      if (row.getBoundingClientRect().height < minHeight) {
+        row.style.height = `${minHeight}px`;
+        Array.from(row.cells).forEach((cell) => { cell.style.height = `${minHeight}px`; });
+      }
+    });
+  };
+  editor.querySelectorAll('table').forEach((table) => {
+    releaseContentSizedRows(table);
+    normalizeTableRowHeights(table);
+  });
+  document.fonts.ready.then(() => {
+    editor.querySelectorAll('table').forEach((table) => {
+      releaseContentSizedRows(table);
+      normalizeTableRowHeights(table);
+    });
+  });
   const MAX_TABLE_DIMENSION = 20;
   const MAX_TABLE_CELLS = 400;
   const TABLE_STYLE_PRESETS = {
@@ -3616,6 +5142,31 @@
     toolbar.style.left = `${Math.max(8, Math.min(anchor.left, maxLeft))}px`;
     toolbar.style.top = `${Math.max(8, Math.min(preferredTop, maxTop))}px`;
   };
+  const positionWatermarkToolbar = (watermark) => {
+    if (watermarkToolbar.hidden) return;
+    const anchor = watermark.getBoundingClientRect();
+    const maxLeft = Math.max(8, window.innerWidth - watermarkToolbar.offsetWidth - 8);
+    const workspaceBounds = document.querySelector('.document-workspace').getBoundingClientRect();
+    const minTop = Math.max(8, workspaceBounds.top + 8);
+    const maxTop = Math.max(minTop, Math.min(
+      window.innerHeight - watermarkToolbar.offsetHeight - 8,
+      workspaceBounds.bottom - watermarkToolbar.offsetHeight - 8
+    ));
+    const gap = 52;
+    const above = anchor.top - watermarkToolbar.offsetHeight - gap;
+    const below = anchor.bottom + gap;
+    const left = Math.max(8, Math.min(anchor.left, maxLeft));
+    const handles = Array.from(watermarkManipulators.children, (handle) => handle.getBoundingClientRect())
+      .filter((bounds) => bounds.right > left && bounds.left < left + watermarkToolbar.offsetWidth);
+    const overlapsHandle = (top) => handles.some((bounds) =>
+      top < bounds.bottom && top + watermarkToolbar.offsetHeight > bounds.top);
+    const candidates = [above, below, minTop, maxTop]
+      .map((top) => Math.max(minTop, Math.min(top, maxTop)));
+    for (let top = minTop; top <= maxTop; top += 8) candidates.push(top);
+    const top = candidates.find((candidate) => !overlapsHandle(candidate));
+    watermarkToolbar.style.left = `${left}px`;
+    watermarkToolbar.style.top = `${top ?? Math.max(minTop, Math.min(above, maxTop))}px`;
+  };
   const positionImageToolbar = (anchor) => {
     if (imageToolbar.hidden) return;
     const gap = 46;
@@ -3629,61 +5180,104 @@
     imageToolbar.style.top = `${top}px`;
   };
   let activeWatermark = null;
-  let watermarkResizeDrag = null;
   let watermarkRotateDrag = null;
+  let watermarkResizeDrag = null;
   const getWatermarkHandlePoint = (watermark, x, y) => {
     const bounds = watermark.getBoundingClientRect();
+    const editorBounds = editor.getBoundingClientRect();
+    const scaleX = editorBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = editorBounds.height / Math.max(editor.offsetHeight, 1);
     const angle = (Number(watermark.dataset.watermarkRotation) || 0) * Math.PI / 180;
     return {
-      left: (bounds.left + bounds.right) / 2 + x * Math.cos(angle) - y * Math.sin(angle),
-      top: (bounds.top + bounds.bottom) / 2 + x * Math.sin(angle) + y * Math.cos(angle)
+      left: (bounds.left + bounds.right) / 2 + x * scaleX * Math.cos(angle) - y * scaleY * Math.sin(angle),
+      top: (bounds.top + bounds.bottom) / 2 + x * scaleX * Math.sin(angle) + y * scaleY * Math.cos(angle)
     };
+  };
+  const clampFloatingHandle = (handle) => {
+    const workspace = document.querySelector('.document-workspace');
+    if (!workspace) return;
+    const workspaceBounds = workspace.getBoundingClientRect();
+    const clipLeft = Math.max(0, workspaceBounds.left + workspace.clientLeft);
+    const clipTop = Math.max(0, workspaceBounds.top + workspace.clientTop);
+    const clipRight = Math.min(window.innerWidth, clipLeft + workspace.clientWidth);
+    const clipBottom = Math.min(window.innerHeight, clipTop + workspace.clientHeight);
+    const handleBounds = handle.getBoundingClientRect();
+    const offsetLeft = Math.min(Math.max(handleBounds.left, clipLeft), clipRight - handle.offsetWidth);
+    const offsetTop = Math.min(Math.max(handleBounds.top, clipTop), clipBottom - handle.offsetHeight);
+    if (offsetLeft !== handleBounds.left || offsetTop !== handleBounds.top) {
+      handle.style.left = `${offsetLeft}px`;
+      handle.style.top = `${offsetTop}px`;
+    }
   };
   const refreshWatermarkManipulators = (watermark) => {
     watermarkManipulators.replaceChildren();
     watermarkManipulators.hidden = !watermark || !editor.contains(watermark);
     if (watermarkManipulators.hidden) return;
-    const scaleX = editor.getBoundingClientRect().width / Math.max(editor.offsetWidth, 1);
-    const scaleY = editor.getBoundingClientRect().height / Math.max(editor.offsetHeight, 1);
-    const width = watermark.offsetWidth * scaleX;
-    const height = watermark.offsetHeight * scaleY;
-    [
-      ['nw', -width / 2, -height / 2, 'top-left'],
-      ['ne', width / 2, -height / 2, 'top-right'],
-      ['sw', -width / 2, height / 2, 'bottom-left'],
-      ['se', width / 2, height / 2, 'bottom-right']
-    ].forEach(([corner, x, y, label]) => {
+    const editorBounds = editor.getBoundingClientRect();
+    const scaleX = editorBounds.width / Math.max(editor.offsetWidth, 1);
+    const scaleY = editorBounds.height / Math.max(editor.offsetHeight, 1);
+    const height = watermark.offsetHeight;
+    const locked = watermark.dataset.watermarkLocked === 'true';
+    const addControlHandle = (action, label, icon, x) => {
       const handle = document.createElement('button');
       handle.type = 'button';
-      handle.className = `image-resize-handle image-resize-${corner}`;
-      handle.dataset.watermarkResizeCorner = corner;
-      handle.setAttribute('aria-label', `Resize watermark from ${label}`);
-      const point = getWatermarkHandlePoint(watermark, x, y);
+      handle.className = 'watermark-control-handle';
+      handle.dataset[action] = 'true';
+      handle.setAttribute('aria-label', label);
+      handle.title = label;
+      if (action === 'watermarkLockToggle') handle.setAttribute('aria-pressed', String(locked));
+      handle.innerHTML = icon;
+      const point = getWatermarkHandlePoint(watermark, x, -height / 2 - 30);
       handle.style.left = `${point.left}px`;
       handle.style.top = `${point.top}px`;
       watermarkManipulators.append(handle);
-    });
-    const rotateHandle = document.createElement('button');
-    rotateHandle.type = 'button';
-    rotateHandle.className = 'image-rotate-handle';
-    rotateHandle.dataset.watermarkRotateHandle = 'true';
-    rotateHandle.setAttribute('aria-label', 'Rotate watermark');
-    rotateHandle.textContent = '↻';
-    const rotatePoint = getWatermarkHandlePoint(watermark, 0, -height / 2 - 28);
-    rotateHandle.style.left = `${rotatePoint.left}px`;
-    rotateHandle.style.top = `${rotatePoint.top}px`;
-    watermarkManipulators.append(rotateHandle);
+      clampFloatingHandle(handle);
+    };
+    const lockIcon = locked
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7-2"/></svg>';
+    if (locked) {
+      addControlHandle('watermarkLockToggle', 'Unlock watermark', lockIcon, 0);
+      return;
+    }
+    addControlHandle('watermarkLockToggle', 'Lock watermark', lockIcon, -36);
+    addControlHandle('watermarkRotateHandle',
+      'Rotate watermark',
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M19 12a7 7 0 1 1-2-5l3 5"/></svg>',
+      0);
+    addControlHandle('watermarkMoreToggle',
+      'Watermark options',
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>',
+      36);
+    const resizeHandle = document.createElement('button');
+    resizeHandle.type = 'button';
+    resizeHandle.className = 'watermark-control-handle';
+    resizeHandle.dataset.watermarkResizeHandle = 'true';
+    resizeHandle.setAttribute('aria-label', 'Resize watermark');
+    resizeHandle.title = 'Resize watermark';
+    resizeHandle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5"/><path d="M12 19h7V12"/><path d="M5 12v7h7"/></svg>';
+    const resizePoint = getWatermarkHandlePoint(watermark, watermark.offsetWidth / 2 + 8 / scaleX,
+      watermark.offsetHeight / 2 + 8 / scaleY);
+    resizeHandle.style.left = `${resizePoint.left}px`;
+    resizeHandle.style.top = `${resizePoint.top}px`;
+    watermarkManipulators.append(resizeHandle);
+    clampFloatingHandle(resizeHandle);
   };
   const getWatermarkDirection = (text) => /[\u0590-\u08ff\ufb50-\ufdff\ufe70-\ufeff]/u.test(text) ? 'rtl' : 'ltr';
   const showWatermarkToolbar = (watermark) => {
     if (activeShape) activeShape.classList.remove('shape-selected');
     activeShape = null;
+    hideShapeFormatTabs();
     shapeToolbar.hidden = true;
     shapeManipulators.hidden = true;
     shapeManipulators.replaceChildren();
     if (activeImage) activeImage.classList.remove('image-selected', 'image-crop-active');
     activeImage = null;
     imageCropMode = false;
+    pictureFormatTab.hidden = true;
+    if (pictureFormatTab.classList.contains('active')) {
+      activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+    }
     imageToolbar.hidden = true;
     imageManipulators.hidden = true;
     tableToolbar.hidden = true;
@@ -3695,25 +5289,25 @@
       activeWatermark.classList.remove('watermark-selected');
     }
     activeWatermark = watermark;
-    activeWatermark.classList.add('watermark-selected');
+    const isLocked = watermark.dataset.watermarkLocked === 'true';
+    activeWatermark.classList.toggle('watermark-selected', !isLocked);
+    watermarkToolbar.hidden = true;
+    watermarkToolbar.querySelector('[data-watermark-edit-panel]').hidden = true;
     const isText = watermark.dataset.watermark === 'text';
     const opacity = Math.round(Number(watermark.dataset.watermarkOpacity || 0.25) * 100);
-    document.getElementById('watermark-edit-text-field').hidden = !isText;
-    document.getElementById('watermark-edit-width-field').hidden = !watermark.matches('img');
+    document.getElementById('watermark-edit-text-field').hidden = isLocked || !isText;
     document.getElementById('watermark-edit-text').value = isText ? watermark.textContent : '';
     applyWatermarkTextDirection(watermarkEditTextInput, getWatermarkDirection(watermark.textContent));
     document.getElementById('watermark-edit-opacity').value = String(opacity);
     document.getElementById('watermark-edit-opacity-value').value = `${opacity}%`;
-    const rotation = Number(watermark.dataset.watermarkRotation) || 0;
-    document.getElementById('watermark-edit-rotation').value = String(rotation);
-    document.getElementById('watermark-edit-rotation-value').value = `${rotation}°`;
-    const width = watermark.matches('img') ? Number(watermark.getAttribute('width')) || watermark.width : 240;
-    document.getElementById('watermark-edit-width').value = String(Math.max(40, Math.min(2000, width)));
-    document.getElementById('watermark-edit-width-value').value = `${width}px`;
-    watermarkToolbar.hidden = true;
     refreshWatermarkManipulators(watermark);
   };
   const insertWatermark = (type, value, opacity) => {
+    const existingWatermark = editor.querySelector('[data-watermark]');
+    if (existingWatermark) {
+      showWatermarkToolbar(existingWatermark);
+      return existingWatermark;
+    }
     let watermark;
     if (type === 'text') {
       watermark = document.createElement('div');
@@ -3730,27 +5324,42 @@
       watermark.width = 200;
     }
     watermark.dataset.watermark = type;
+    watermark.dataset.watermarkCentered = 'true';
     watermark.dataset.watermarkOpacity = (opacity / 100).toFixed(2);
     watermark.dataset.watermarkRotation = '0';
+    watermark.tabIndex = 0;
+    watermark.setAttribute('role', 'button');
+    watermark.setAttribute('aria-label',
+      `${type === 'image' ? 'Image' : 'Text'} watermark. Press Enter to open controls.`);
     watermark.contentEditable = 'false';
     watermark.style.position = 'absolute';
+    watermark.style.left = '50%';
     watermark.style.transformOrigin = 'center';
     watermark.style.opacity = watermark.dataset.watermarkOpacity;
+    if (activeWatermark) activeWatermark.classList.remove('watermark-selected');
+    activeWatermark = null;
+    watermarkToolbar.hidden = true;
+    watermarkManipulators.hidden = true;
+    watermarkManipulators.replaceChildren();
     editor.append(watermark);
     const centerWatermark = () => {
-      watermark.style.left = `${Math.max(0, (editor.offsetWidth - watermark.offsetWidth) / 2)}px`;
+      watermark.style.left = '50%';
       watermark.style.top = `${Math.max(0, (editor.offsetHeight - watermark.offsetHeight) / 2)}px`;
-      refreshWatermarkManipulators(watermark);
+      if (activeWatermark === watermark) refreshWatermarkManipulators(watermark);
     };
     if (watermark instanceof HTMLImageElement && !watermark.complete) {
       watermark.addEventListener('load', centerWatermark, { once: true });
     }
     centerWatermark();
-    showWatermarkToolbar(watermark);
     scheduleSave();
     return watermark;
   };
   document.getElementById('watermark-button').addEventListener('click', () => {
+    const existingWatermark = editor.querySelector('[data-watermark]');
+    if (existingWatermark) {
+      showWatermarkToolbar(existingWatermark);
+      return;
+    }
     watermarkDialog.showModal();
   });
   const watermarkPreview = document.getElementById('watermark-preview');
@@ -3786,6 +5395,31 @@
   enableUrduTyping(document.getElementById('shape-text'));
   enableUrduTyping(watermarkTextInput);
   enableUrduTyping(watermarkEditTextInput);
+  const toggleWatermarkLock = (watermark) => {
+    if (!watermark || !editor.contains(watermark)) return;
+    if (watermark.dataset.watermarkLocked === 'true') delete watermark.dataset.watermarkLocked;
+    else watermark.dataset.watermarkLocked = 'true';
+    showWatermarkToolbar(watermark);
+    scheduleSave();
+  };
+  watermarkManipulators.addEventListener('click', (event) => {
+    const lockHandle = event.target.closest('[data-watermark-lock-toggle]');
+    const moreHandle = event.target.closest('[data-watermark-more-toggle]');
+    if (lockHandle) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleWatermarkLock(activeWatermark);
+      return;
+    }
+    if (!moreHandle || !activeWatermark || activeWatermark.dataset.watermarkLocked === 'true') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const editPanel = watermarkToolbar.querySelector('[data-watermark-edit-panel]');
+    const open = editPanel.hidden;
+    watermarkToolbar.hidden = !open;
+    editPanel.hidden = !open;
+    if (open) positionWatermarkToolbar(activeWatermark);
+  });
   document.querySelectorAll('input[name="watermark-kind"]').forEach((input) => {
     input.addEventListener('change', () => {
       const isImage = input.value === 'image' && input.checked;
@@ -3854,6 +5488,12 @@
     reader.readAsDataURL(file);
   });
   watermarkManipulators.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('[data-watermark-lock-toggle]')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (activeWatermark?.dataset.watermarkLocked === 'true') return;
     const rotateHandle = event.target.closest('[data-watermark-rotate-handle]');
     if (rotateHandle && activeWatermark && editor.contains(activeWatermark)) {
       event.preventDefault();
@@ -3870,36 +5510,24 @@
       };
       return;
     }
-    const handle = event.target.closest('[data-watermark-resize-corner]');
-    if (!handle || !activeWatermark || !editor.contains(activeWatermark)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const pageBounds = editor.getBoundingClientRect();
-    const bounds = activeWatermark.getBoundingClientRect();
-    const scaleX = pageBounds.width / editor.offsetWidth;
-    const scaleY = pageBounds.height / editor.offsetHeight;
-    const width = activeWatermark.offsetWidth;
-    const height = activeWatermark.offsetHeight;
-    const fontSize = Number.parseFloat(getComputedStyle(activeWatermark).fontSize);
-    watermarkResizeDrag = {
-      watermark: activeWatermark,
-      pointerId: event.pointerId,
-      corner: handle.dataset.watermarkResizeCorner,
-      startX: event.clientX,
-      startY: event.clientY,
-      left: activeWatermark.offsetLeft,
-      top: activeWatermark.offsetTop,
-      width: activeWatermark.offsetWidth,
-      height: activeWatermark.offsetHeight,
-      aspect: width / Math.max(height, 1),
-      rotation: (Number(activeWatermark.dataset.watermarkRotation) || 0) * Math.PI / 180,
-      fontSize,
-      scaleX,
-      scaleY,
-      pageWidth: editor.offsetWidth,
-      pageHeight: editor.offsetHeight,
-      minWidth: activeWatermark.matches('img') ? 40 : width * 12 / Math.max(fontSize, 1)
-    };
+    const resizeHandle = event.target.closest('[data-watermark-resize-handle]');
+    if (resizeHandle && activeWatermark && editor.contains(activeWatermark)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = activeWatermark.getBoundingClientRect();
+      const editorBounds = editor.getBoundingClientRect();
+      const scaleX = editorBounds.width / Math.max(editor.offsetWidth, 1);
+      watermarkResizeDrag = {
+        watermark: activeWatermark,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWidth: activeWatermark.offsetWidth,
+        startFontSize: Number.parseFloat(getComputedStyle(activeWatermark).fontSize) || 56,
+        scaleX: scaleX || 1,
+        startBounds: bounds
+      };
+    }
   });
   document.addEventListener('pointermove', (event) => {
     if (watermarkRotateDrag && watermarkRotateDrag.pointerId === event.pointerId) {
@@ -3912,38 +5540,28 @@
       drag.lastPointerAngle = angle;
       drag.watermark.dataset.watermarkRotation = String(drag.rotation);
       drag.watermark.style.rotate = `${drag.rotation}deg`;
-      document.getElementById('watermark-edit-rotation').value = String(drag.rotation);
-      document.getElementById('watermark-edit-rotation-value').value = `${drag.rotation}°`;
       refreshWatermarkManipulators(drag.watermark);
+      positionWatermarkToolbar(drag.watermark);
       event.preventDefault();
       return;
     }
-    if (!watermarkResizeDrag || watermarkResizeDrag.pointerId !== event.pointerId) return;
-    const drag = watermarkResizeDrag;
-    const signX = drag.corner.endsWith('e') ? 1 : -1;
-    const signY = drag.corner.startsWith('s') ? 1 : -1;
-    const pointerX = event.clientX - drag.startX;
-    const pointerY = event.clientY - drag.startY;
-    const dx = (pointerX * Math.cos(drag.rotation) + pointerY * Math.sin(drag.rotation)) /
-      drag.scaleX * signX;
-    const dy = (-pointerX * Math.sin(drag.rotation) + pointerY * Math.cos(drag.rotation)) /
-      drag.scaleY * signY;
-    const widthChange = (dx + dy / drag.aspect) / (1 + 1 / (drag.aspect * drag.aspect));
-    const maxWidth = Math.min(2000, drag.pageWidth * 0.9, drag.pageHeight * 0.9 * drag.aspect);
-    const width = Math.max(Math.min(drag.minWidth, maxWidth),
-      Math.min(maxWidth, drag.width + widthChange));
-    if (drag.watermark.matches('img')) {
-      drag.watermark.width = Math.round(width);
-      document.getElementById('watermark-edit-width').value = String(Math.round(width));
-      document.getElementById('watermark-edit-width-value').value = `${Math.round(width)}px`;
-    } else {
-      drag.watermark.style.fontSize = `${(Math.round(drag.fontSize * width / drag.width * 100) / 100)}px`;
+    if (watermarkResizeDrag && watermarkResizeDrag.pointerId === event.pointerId) {
+      const drag = watermarkResizeDrag;
+      const deltaX = (event.clientX - drag.startX) / drag.scaleX;
+      const deltaY = (event.clientY - drag.startY) / drag.scaleX;
+      const dimension = Math.max(drag.startBounds.width / drag.scaleX,
+        drag.startBounds.height / drag.scaleX, 1);
+      const scale = Math.max(0.25, 1 + (deltaX + deltaY) / (2 * dimension));
+      if (drag.watermark.dataset.watermark === 'text') {
+        drag.watermark.style.fontSize = `${Math.max(12, Math.min(200, drag.startFontSize * scale))}px`;
+      } else {
+        drag.watermark.style.width = `${Math.max(32, drag.startWidth * scale)}px`;
+        drag.watermark.style.height = 'auto';
+      }
+      refreshWatermarkManipulators(drag.watermark);
+      if (!watermarkToolbar.hidden) positionWatermarkToolbar(drag.watermark);
+      event.preventDefault();
     }
-    drag.watermark.style.left = `${Math.max(0, (drag.pageWidth - drag.watermark.offsetWidth) / 2)}px`;
-    drag.watermark.style.top = `${Math.max(0, (drag.pageHeight - drag.watermark.offsetHeight) / 2)}px`;
-    refreshWatermarkManipulators(drag.watermark);
-    positionContextToolbar(watermarkToolbar, drag.watermark.getBoundingClientRect());
-    event.preventDefault();
   });
   const finishWatermarkDrag = (event) => {
     if (watermarkRotateDrag && watermarkRotateDrag.pointerId === event.pointerId) {
@@ -3958,16 +5576,19 @@
   document.addEventListener('pointerup', finishWatermarkDrag);
   document.addEventListener('pointercancel', finishWatermarkDrag);
   document.getElementById('watermark-edit-text').addEventListener('input', (event) => {
-    if (!activeWatermark || activeWatermark.dataset.watermark !== 'text') return;
+    if (!activeWatermark || !editor.contains(activeWatermark) ||
+      activeWatermark.dataset.watermarkLocked === 'true' || activeWatermark.dataset.watermark !== 'text') return;
     activeWatermark.textContent = event.currentTarget.value;
     activeWatermark.dir = getWatermarkDirection(event.currentTarget.value);
     activeWatermark.lang = activeWatermark.dir === 'rtl' ? 'ur' : 'en';
     applyWatermarkTextDirection(event.currentTarget, activeWatermark.dir);
     refreshWatermarkManipulators(activeWatermark);
+    positionWatermarkToolbar(activeWatermark);
     scheduleSave();
   });
   document.getElementById('watermark-edit-opacity').addEventListener('input', (event) => {
-    if (!activeWatermark || !editor.contains(activeWatermark)) return;
+    if (!activeWatermark || !editor.contains(activeWatermark) ||
+      activeWatermark.dataset.watermarkLocked === 'true') return;
     const opacity = (Number(event.currentTarget.value) / 100).toFixed(2);
     activeWatermark.dataset.watermarkOpacity = opacity;
     activeWatermark.style.opacity = opacity;
@@ -3975,27 +5596,10 @@
     document.getElementById('watermark-edit-opacity-value').value = `${event.currentTarget.value}%`;
     scheduleSave();
   });
-  document.getElementById('watermark-edit-width').addEventListener('input', (event) => {
-    if (!activeWatermark || !activeWatermark.matches('img')) return;
-    activeWatermark.width = Number(event.currentTarget.value);
-    activeWatermark.style.left = `${Math.max(0, (editor.offsetWidth - activeWatermark.offsetWidth) / 2)}px`;
-    activeWatermark.style.top = `${Math.max(0, (editor.offsetHeight - activeWatermark.offsetHeight) / 2)}px`;
-    document.getElementById('watermark-edit-width-value').value = `${event.currentTarget.value}px`;
-    refreshWatermarkManipulators(activeWatermark);
-    positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
-    scheduleSave();
-  });
-  document.getElementById('watermark-edit-rotation').addEventListener('input', (event) => {
-    if (!activeWatermark || !editor.contains(activeWatermark)) return;
-    const rotation = Number(event.currentTarget.value);
-    activeWatermark.dataset.watermarkRotation = String(rotation);
-    activeWatermark.style.rotate = `${rotation}deg`;
-    document.getElementById('watermark-edit-rotation-value').value = `${rotation}°`;
-    refreshWatermarkManipulators(activeWatermark);
-    scheduleSave();
-  });
   const removeSelectedWatermark = () => {
-    if (activeWatermark && editor.contains(activeWatermark)) activeWatermark.remove();
+    if (!activeWatermark || !editor.contains(activeWatermark) ||
+      activeWatermark.dataset.watermarkLocked === 'true') return;
+    activeWatermark.remove();
     activeWatermark = null;
     watermarkManipulators.hidden = true;
     watermarkManipulators.replaceChildren();
@@ -4003,12 +5607,14 @@
     scheduleSave();
   };
   document.getElementById('watermark-delete').addEventListener('click', removeSelectedWatermark);
-  const updateTableCellCaretHeight = (cell) => {
-    const style = getComputedStyle(cell);
-    const verticalPadding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
-    const verticalBorders = Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+  const updateTableCellCaretHeight = (cell, caretStyle) => {
+    const cellStyle = getComputedStyle(cell);
+    const verticalPadding = Number.parseFloat(cellStyle.paddingTop) + Number.parseFloat(cellStyle.paddingBottom);
+    const verticalBorders = Number.parseFloat(cellStyle.borderTopWidth) + Number.parseFloat(cellStyle.borderBottomWidth);
     const availableHeight = Math.max(1, cell.getBoundingClientRect().height - verticalPadding - verticalBorders);
-    return Math.max(1, Math.min(18, availableHeight - 4));
+    const fontSize = Number.parseFloat(caretStyle.fontSize) || Number.parseFloat(cellStyle.fontSize);
+    const lineHeight = Number.parseFloat(caretStyle.lineHeight) || fontSize * 1.2;
+    return Math.max(1, Math.min(availableHeight, fontSize * 1.25, lineHeight * 0.9));
   };
   const updateTableCaretOverlay = () => {
     const selection = window.getSelection();
@@ -4022,6 +5628,10 @@
       activeCaretTableCell = null;
       return;
     }
+    if (cell.closest('table').classList.contains('table-caret-suspended')) {
+      tableCaretOverlay.hidden = true;
+      return;
+    }
     if (activeCaretTableCell !== cell) {
       activeCaretTableCell?.classList.remove('table-caret-target');
       activeCaretTableCell = cell;
@@ -4030,7 +5640,9 @@
     const range = selection.getRangeAt(0).cloneRange();
     const caretRect = range.getBoundingClientRect();
     const cellRect = cell.getBoundingClientRect();
-    const caretHeight = updateTableCellCaretHeight(cell);
+    const caretElement = anchor instanceof Element ? anchor : anchor?.parentElement;
+    const caretStyle = getComputedStyle(caretElement || cell);
+    const caretHeight = updateTableCellCaretHeight(cell, caretStyle);
     const style = getComputedStyle(cell);
     const fallbackX = style.direction === 'rtl'
       ? cellRect.right - Number.parseFloat(style.paddingRight) - Number.parseFloat(style.borderRightWidth) - 1
@@ -4039,9 +5651,12 @@
     const left = Math.max(cellRect.left + 1, Math.min(cellRect.right - 2, caretX));
     const minTop = cellRect.top + Number.parseFloat(style.borderTopWidth) + 1;
     const maxTop = Math.max(minTop, cellRect.bottom - Number.parseFloat(style.borderBottomWidth) - caretHeight - 1);
-    const selectionTop = caretRect.height
-      ? caretRect.top + (caretRect.height - caretHeight) / 2
-      : cellRect.top + (cellRect.height - caretHeight) / 2;
+    const caretLine = caretElement?.closest('p, li, h1, h2, h3, h4, h5, h6, blockquote, div');
+    const fallbackTop = caretLine
+      ? caretLine.getBoundingClientRect().top +
+        (Number.parseFloat(getComputedStyle(caretLine).getPropertyValue('--table-text-ink-offset')) || 0)
+      : cellRect.top + Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.paddingTop);
+    const selectionTop = fallbackTop;
     const top = Math.max(minTop, Math.min(maxTop, selectionTop));
     tableCaretOverlay.style.left = `${left}px`;
     tableCaretOverlay.style.top = `${top}px`;
@@ -4092,9 +5707,8 @@
     document.getElementById('table-alignment').value = table.dataset.tableAlign || 'left';
     document.getElementById('table-autofit').value = table.dataset.tableAutofit || 'fixed';
     document.getElementById('table-repeat-header').checked = table.dataset.repeatHeader === 'true';
-    document.getElementById('table-cell-padding').value = cell.style.paddingTop
-      ? String(Number.parseFloat(cell.style.paddingTop))
-      : '3';
+    const horizontalPadding = cell.style.paddingLeft || '4';
+    document.getElementById('table-cell-padding').value = String(Number.parseFloat(horizontalPadding));
     document.getElementById('table-cell-padding-value').value = `${document.getElementById('table-cell-padding').value} px`;
     document.getElementById('table-cell-vertical').value = cell.style.verticalAlign || 'top';
     positionTableToolbar(cell);
@@ -4151,47 +5765,60 @@
       ['nw', left, top, 'top-left'],
       ['ne', right, top, 'top-right'],
       ['se', right, bottom, 'bottom-right'],
-      ['sw', left, bottom, 'bottom-left'],
-      ...(imageCropMode ? [
-        ['n', (left + right) / 2, top, 'top'],
-        ['e', right, (top + bottom) / 2, 'right'],
-        ['s', (left + right) / 2, bottom, 'bottom'],
-        ['w', left, (top + bottom) / 2, 'left']
-      ] : [])
+      ['sw', left, bottom, 'bottom-left']
     ].forEach(([corner, handleLeft, handleTop, label]) => {
       const handle = document.createElement('button');
       handle.type = 'button';
-      handle.className = `image-resize-handle image-resize-${corner}`;
+      handle.className = `image-resize-handle image-resize-${corner}${imageCropMode ? ' image-crop-handle' : ''}`;
       handle.dataset.resizeCorner = corner;
-      const isMiddle = ['n', 'e', 's', 'w'].includes(corner);
-      handle.dataset.resizeAction = isMiddle ? 'crop' : 'resize';
-      handle.setAttribute('aria-label', `${isMiddle ? 'Crop' : 'Resize'} picture from ${label}`);
+      handle.dataset.resizeAction = imageCropMode ? 'crop' : 'resize';
+      handle.setAttribute('aria-label', `${imageCropMode ? 'Crop' : 'Resize'} picture from ${label}`);
       const point = getImageHandlePoint(image, handleLeft, handleTop);
-      handle.style.left = `${point.left}px`;
-      handle.style.top = `${point.top}px`;
       imageManipulators.append(handle);
+      positionImageHandle(handle, point);
     });
-    const rotateHandle = document.createElement('button');
-    rotateHandle.type = 'button';
-    rotateHandle.className = 'image-rotate-handle';
-    rotateHandle.dataset.rotateHandle = 'true';
-    rotateHandle.setAttribute('aria-label', 'Rotate picture');
-    rotateHandle.textContent = '↻';
-    const rotatePoint = getImageHandlePoint(image, frame.width / 2 + 26, 0);
-    rotateHandle.style.left = `${rotatePoint.left}px`;
-    rotateHandle.style.top = `${rotatePoint.top}px`;
-    imageManipulators.append(rotateHandle);
-    const optionsHandle = document.createElement('button');
-    optionsHandle.type = 'button';
-    optionsHandle.className = 'image-options-handle';
-    optionsHandle.dataset.imageOptionsHandle = 'true';
-    optionsHandle.setAttribute('aria-label', 'More picture options');
-    optionsHandle.title = 'More picture options';
-    optionsHandle.textContent = '•••';
-    const optionsPoint = getImageHandlePoint(image, -frame.width / 2 - 28, 0);
-    optionsHandle.style.left = `${optionsPoint.left}px`;
-    optionsHandle.style.top = `${optionsPoint.top}px`;
-    imageManipulators.append(optionsHandle);
+    if (imageCropMode) {
+      [
+        ['e', right, (top + bottom) / 2, 'middle-right'],
+        ['w', left, (top + bottom) / 2, 'middle-left']
+      ].forEach(([side, handleLeft, handleTop, label]) => {
+        const handle = document.createElement('button');
+        handle.type = 'button';
+        handle.className = `image-resize-handle image-resize-${side} image-crop-handle`;
+        handle.dataset.resizeCorner = side;
+        handle.dataset.resizeAction = 'crop';
+        handle.setAttribute('aria-label', `Crop picture from ${label}`);
+        const point = getImageHandlePoint(image, handleLeft, handleTop);
+        imageManipulators.append(handle);
+        positionImageHandle(handle, point);
+      });
+    }
+    if (!imageCropMode) {
+      const rotateHandle = document.createElement('button');
+      rotateHandle.type = 'button';
+      rotateHandle.className = 'image-rotate-handle';
+      rotateHandle.dataset.rotateHandle = 'true';
+      rotateHandle.setAttribute('aria-label', 'Rotate picture');
+      rotateHandle.textContent = '↻';
+      const rotatePoint = getImageHandlePoint(image, frame.width / 2 + 26, 0);
+      imageManipulators.append(rotateHandle);
+      positionImageHandle(rotateHandle, rotatePoint);
+    }
+  };
+  const positionImageHandle = (handle, point) => {
+    handle.style.left = `${point.left}px`;
+    handle.style.top = `${point.top}px`;
+    handle.hidden = false;
+    const workspace = document.querySelector('.document-workspace');
+    if (!workspace) return;
+    const workspaceBounds = workspace.getBoundingClientRect();
+    const clipLeft = Math.max(0, workspaceBounds.left + workspace.clientLeft);
+    const clipTop = Math.max(0, workspaceBounds.top + workspace.clientTop);
+    const clipRight = Math.min(window.innerWidth, clipLeft + workspace.clientWidth);
+    const clipBottom = Math.min(window.innerHeight, clipTop + workspace.clientHeight);
+    const handleBounds = handle.getBoundingClientRect();
+    handle.hidden = handleBounds.left < clipLeft || handleBounds.top < clipTop ||
+      handleBounds.right > clipRight || handleBounds.bottom > clipBottom;
   };
   const ensureShapePosition = (shape) => {
     if (shape.style.left && shape.style.top) return;
@@ -4241,6 +5868,21 @@
       { x: -1, y: 1 }, { x: -1, y: 0 }
     ];
   };
+  const positionShapeHandle = (handle, point) => {
+    handle.style.left = `${point.left}px`;
+    handle.style.top = `${point.top}px`;
+    handle.hidden = false;
+    const workspace = document.querySelector('.document-workspace');
+    if (!workspace) return;
+    const workspaceBounds = workspace.getBoundingClientRect();
+    const clipLeft = Math.max(0, workspaceBounds.left + workspace.clientLeft);
+    const clipTop = Math.max(0, workspaceBounds.top + workspace.clientTop);
+    const clipRight = Math.min(window.innerWidth, clipLeft + workspace.clientWidth);
+    const clipBottom = Math.min(window.innerHeight, clipTop + workspace.clientHeight);
+    const handleBounds = handle.getBoundingClientRect();
+    handle.hidden = handleBounds.left < clipLeft || handleBounds.top < clipTop ||
+      handleBounds.right > clipRight || handleBounds.bottom > clipBottom;
+  };
   const refreshShapeManipulators = (shape) => {
     shapeManipulators.replaceChildren();
     shapeManipulators.hidden = !shape || !editor.contains(shape);
@@ -4258,9 +5900,8 @@
       handle.dataset.shapeResizeY = String(y);
       handle.setAttribute('aria-label', `Resize shape at point ${index + 1}`);
       const point = getShapeHandlePoint(shape, x * width / 2, y * height / 2);
-      handle.style.left = `${point.left}px`;
-      handle.style.top = `${point.top}px`;
       shapeManipulators.append(handle);
+      positionShapeHandle(handle, point);
     });
     const moveHandle = document.createElement('button');
     moveHandle.type = 'button';
@@ -4270,9 +5911,8 @@
     moveHandle.title = 'Move shape';
     moveHandle.textContent = '⠿';
     const movePoint = getShapeHandlePoint(shape, 0, -height / 2 - 28);
-    moveHandle.style.left = `${movePoint.left}px`;
-    moveHandle.style.top = `${movePoint.top}px`;
     shapeManipulators.append(moveHandle);
+    positionShapeHandle(moveHandle, movePoint);
     const rotateHandle = document.createElement('button');
     rotateHandle.type = 'button';
     rotateHandle.className = 'image-rotate-handle';
@@ -4280,27 +5920,16 @@
     rotateHandle.setAttribute('aria-label', 'Rotate shape');
     rotateHandle.textContent = '↻';
     const rotatePoint = getShapeHandlePoint(shape, width / 2 + 26, 0);
-    rotateHandle.style.left = `${rotatePoint.left}px`;
-    rotateHandle.style.top = `${rotatePoint.top}px`;
     shapeManipulators.append(rotateHandle);
+    positionShapeHandle(rotateHandle, rotatePoint);
 
-    const optionsHandle = document.createElement('button');
-    optionsHandle.type = 'button';
-    optionsHandle.className = 'image-options-handle';
-    optionsHandle.dataset.shapeOptionsHandle = 'true';
-    optionsHandle.setAttribute('aria-label', 'More shape options');
-    optionsHandle.title = 'More shape options';
-    optionsHandle.textContent = '•••';
-    const optionsPoint = getShapeHandlePoint(shape, -width / 2 - 28, 0);
-    optionsHandle.style.left = `${optionsPoint.left}px`;
-    optionsHandle.style.top = `${optionsPoint.top}px`;
-    shapeManipulators.append(optionsHandle);
   };
   const showShapeToolbar = (shape) => {
     ensureShapePosition(shape);
     if (activeImage) activeImage.classList.remove('image-selected', 'image-crop-active');
     activeImage = null;
     imageCropMode = false;
+    pictureFormatTab.hidden = true;
     imageToolbar.hidden = true;
     imageManipulators.hidden = true;
     imageManipulators.replaceChildren();
@@ -4323,7 +5952,6 @@
     document.getElementById('shape-line-color').value = shape.dataset.shapeLine || '#176b9a';
     const lineWidth = Number(shape.dataset.shapeLineWidth ?? 2);
     document.getElementById('shape-line-width').value = String(lineWidth);
-    document.getElementById('shape-line-width-value').value = `${lineWidth} px`;
     const textBoxBorderToggle = document.getElementById('textbox-border-toggle');
     textBoxBorderToggle.setAttribute('aria-pressed', String(lineWidth > 0));
     textBoxBorderToggle.textContent = lineWidth > 0 ? 'Remove border' : 'Show border';
@@ -4331,6 +5959,21 @@
     document.getElementById('shape-opacity').value = String(opacity);
     document.getElementById('shape-opacity-value').value = `${opacity}%`;
     document.getElementById('shape-text').value = shape.querySelector('[data-shape-label="true"]')?.textContent || '';
+    const shapeTextColor = shape.querySelector('[data-shape-label="true"]')?.dataset.shapeTextColor || '#202124';
+    document.getElementById('shape-ribbon-text-color').value = shapeTextColor;
+    document.querySelector('[data-shape-color-swatch="text"]').style.backgroundColor = shapeTextColor;
+    document.getElementById('shape-ribbon-fill').value = shape.dataset.shapeFill || '#dce8f5';
+    document.querySelector('[data-shape-color-swatch="fill"]').style.backgroundColor =
+      shape.dataset.shapeFill || '#dce8f5';
+    document.getElementById('shape-ribbon-outline').value = shape.dataset.shapeLine || '#176b9a';
+    document.querySelector('[data-shape-color-swatch="outline"]').style.backgroundColor =
+      shape.dataset.shapeLine || '#176b9a';
+    document.getElementById('shape-ribbon-outline-width').value = String(lineWidth);
+    document.getElementById('shape-ribbon-shadow').checked = shape.dataset.shapeShadow === 'true';
+    const isTextBox = shape.dataset.editorTextbox === 'true';
+    shapeFormatTab.hidden = isTextBox;
+    textboxFormatTab.hidden = !isTextBox;
+    activateRibbonTab(isTextBox ? textboxFormatTab : shapeFormatTab);
     refreshShapeManipulators(shape);
   };
   let shapeResizeDrag = null;
@@ -4361,10 +6004,17 @@
       moved: false
     };
   };
+  let shapePointerDown = null;
   editor.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0) {
+      shapePointerDown = null;
+      return;
+    }
     const shape = event.target.closest('.editor-shape');
-    if (!shape || !editor.contains(shape)) return;
+    shapePointerDown = shape && editor.contains(shape)
+      ? { shape, clientX: event.clientX, clientY: event.clientY }
+      : null;
+    if (!shapePointerDown) return;
     event.stopPropagation();
     ensureShapePosition(shape);
     showShapeToolbar(shape);
@@ -4375,12 +6025,6 @@
       event.preventDefault();
       event.stopPropagation();
       startShapeMove(activeShape, event);
-      return;
-    }
-    const optionsHandle = event.target.closest('[data-shape-options-handle]');
-    if (optionsHandle) {
-      event.preventDefault();
-      event.stopPropagation();
       return;
     }
     const rotateHandle = event.target.closest('[data-shape-rotate-handle]');
@@ -4461,15 +6105,16 @@
     const drag = shapeResizeDrag;
     const screenX = event.clientX - drag.startX;
     const screenY = event.clientY - drag.startY;
-    const dx = (screenX * Math.cos(drag.rotation) + screenY * Math.sin(drag.rotation)) / drag.scaleX;
-    const dy = (-screenX * Math.sin(drag.rotation) + screenY * Math.cos(drag.rotation)) / drag.scaleY;
+    const smoothing = 0.8;
+    const dx = ((screenX * Math.cos(drag.rotation) + screenY * Math.sin(drag.rotation)) / drag.scaleX) * smoothing;
+    const dy = ((-screenX * Math.sin(drag.rotation) + screenY * Math.cos(drag.rotation)) / drag.scaleY) * smoothing;
     const widthDelta = Math.abs(drag.handleX) > 0.01 ? 2 * dx / drag.handleX : 0;
     const heightDelta = Math.abs(drag.handleY) > 0.01 ? 2 * dy / drag.handleY : 0;
     const width = Math.abs(drag.handleX) > 0.01
       ? Math.max(20, Math.min(10000, drag.width + widthDelta))
       : drag.width;
     const height = Math.abs(drag.handleY) > 0.01
-      ? Math.max(activeShape.dataset.shapeType === 'line' ? 1 : 20, Math.min(10000, drag.height + heightDelta))
+      ? Math.max(1, Math.min(10000, drag.height + heightDelta))
       : drag.height;
     if (activeShape.dataset.editorTextbox === 'true' && Math.abs(drag.handleX) > 0.01) {
       activeShape.dataset.textboxManualWidth = 'true';
@@ -4516,14 +6161,10 @@
   };
   document.addEventListener('pointerup', finishShapeResize);
   document.addEventListener('pointercancel', finishShapeResize);
-  shapeManipulators.addEventListener('click', (event) => {
-    if (!event.target.closest('[data-shape-options-handle]') || !activeShape || !editor.contains(activeShape)) return;
-    shapeToolbar.hidden = !shapeToolbar.hidden;
-    if (!shapeToolbar.hidden) positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
-  });
   document.getElementById('shape-fill-color').addEventListener('input', (event) => {
     if (!activeShape || !editor.contains(activeShape)) return;
     activeShape.dataset.shapeFill = event.currentTarget.value;
+    document.getElementById('shape-ribbon-fill').value = event.currentTarget.value;
     activeShape.style.setProperty('--shape-fill-color', event.currentTarget.value);
     if (activeShape.dataset.shapeGeometry !== 'polygon' && activeShape.dataset.shapeType !== 'line') {
       activeShape.style.backgroundColor = event.currentTarget.value;
@@ -4533,6 +6174,7 @@
   document.getElementById('shape-line-color').addEventListener('input', (event) => {
     if (!activeShape || !editor.contains(activeShape)) return;
     activeShape.dataset.shapeLine = event.currentTarget.value;
+    document.getElementById('shape-ribbon-outline').value = event.currentTarget.value;
     activeShape.style.setProperty('--shape-line-color', event.currentTarget.value);
     if (activeShape.dataset.shapeGeometry === 'polygon' || activeShape.dataset.shapeType === 'line') {
       activeShape.style.backgroundColor = event.currentTarget.value;
@@ -4543,14 +6185,17 @@
   });
   const setShapeLineWidth = (shape, width) => {
     if (!shape || !editor.contains(shape)) return;
+    width = Math.max(0, Math.min(100, Number.isFinite(width) ? width : 0));
     shape.dataset.shapeLineWidth = String(width);
     shape.style.borderWidth = `${width}px`;
     shape.style.setProperty('--shape-border-width', `${width}px`);
     if (shape.dataset.shapeType === 'line') {
       shape.style.height = `${Math.max(1, width)}px`;
     }
-    document.getElementById('shape-line-width-value').value = `${width} px`;
-    document.getElementById('shape-line-width').value = String(width);
+    const shapeWidthInput = document.getElementById('shape-line-width');
+    const ribbonWidthInput = document.getElementById('shape-ribbon-outline-width');
+    if (document.activeElement !== shapeWidthInput) shapeWidthInput.value = String(width);
+    if (document.activeElement !== ribbonWidthInput) ribbonWidthInput.value = String(width);
     const textBoxBorderToggle = document.getElementById('textbox-border-toggle');
     textBoxBorderToggle.setAttribute('aria-pressed', String(width > 0));
     textBoxBorderToggle.textContent = width > 0 ? 'Remove border' : 'Show border';
@@ -4558,7 +6203,9 @@
   };
   document.getElementById('shape-line-width').addEventListener('input', (event) => {
     if (!activeShape || !editor.contains(activeShape)) return;
-    setShapeLineWidth(activeShape, Number(event.currentTarget.value));
+    if (event.currentTarget.value === '') return;
+    const width = Number(event.currentTarget.value);
+    if (Number.isFinite(width) && width >= 0 && width <= 100) setShapeLineWidth(activeShape, width);
   });
   document.getElementById('textbox-border-toggle').addEventListener('click', () => {
     if (!activeShape || activeShape.dataset.editorTextbox !== 'true' || !editor.contains(activeShape)) return;
@@ -4589,6 +6236,12 @@
   const removeSelectedShape = () => {
     if (activeShape && editor.contains(activeShape)) activeShape.remove();
     activeShape = null;
+    const shapeFormatActive = shapeFormatTab.classList.contains('active') ||
+      textboxFormatTab.classList.contains('active');
+    hideShapeFormatTabs();
+    if (shapeFormatActive) {
+      activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+    }
     shapeToolbar.hidden = true;
     shapeManipulators.hidden = true;
     shapeManipulators.replaceChildren();
@@ -4616,6 +6269,7 @@
   const showImageToolbar = (image) => {
     if (activeShape) activeShape.classList.remove('shape-selected');
     activeShape = null;
+    hideShapeFormatTabs();
     shapeToolbar.hidden = true;
     shapeManipulators.hidden = true;
     shapeManipulators.replaceChildren();
@@ -4628,6 +6282,7 @@
       activeImage.classList.remove('image-selected', 'image-crop-active');
     }
     activeImage = image;
+    editor.blur();
     activeImage.classList.remove('image-crop-active');
     image.classList.add('image-selected');
     tableToolbar.hidden = true;
@@ -4639,19 +6294,21 @@
     imageCropMode = false;
     imageToolbar.dataset.cropMode = 'false';
     document.getElementById('image-crop-toggle').setAttribute('aria-pressed', 'false');
+    document.getElementById('image-crop-toggle').querySelector('span').textContent = 'Crop';
     document.getElementById('image-crop-toggle').title = 'Crop picture';
     document.getElementById('image-crop-toggle').setAttribute('aria-label', 'Crop picture');
     document.getElementById('image-border-color').value = image.dataset.imageBorderColor || '#176b9a';
     document.querySelector('.image-border-color-tool > span').style.backgroundColor =
       image.dataset.imageBorderColor || '#176b9a';
     document.getElementById('image-border-width').value = image.dataset.imageBorderWidth || '0';
-    document.getElementById('image-border-width-value').value = `${image.dataset.imageBorderWidth || 0} px`;
     document.getElementById('image-radius').value = image.dataset.imageRadius || '0';
     document.getElementById('image-radius-value').value = `${image.dataset.imageRadius || 0} px`;
     const opacity = Math.round(Number(image.dataset.imageOpacity ?? 1) * 100);
     document.getElementById('image-opacity').value = String(opacity);
     document.getElementById('image-opacity-value').value = `${opacity}%`;
     applyImageCrop(image, readImageCrop(image));
+    pictureFormatTab.hidden = false;
+    activateRibbonTab(pictureFormatTab);
     refreshImageManipulators(image);
   };
   let imageDrag = null;
@@ -4659,7 +6316,11 @@
   let imageRotateDrag = null;
   editor.addEventListener('pointerdown', (event) => {
     const image = event.target.closest('img');
-    if (event.button !== 0 || !image || !editor.contains(image) || image.dataset.imageWrap !== 'free') return;
+    if (event.button !== 0 || !image || !editor.contains(image)) return;
+    if (image.dataset.imageWrap !== 'free') {
+      event.preventDefault();
+      return;
+    }
     if (image === activeImage && imageCropMode) {
       event.preventDefault();
       return;
@@ -4685,11 +6346,6 @@
     };
   });
   imageManipulators.addEventListener('pointerdown', (event) => {
-    if (event.target.closest('[data-image-options-handle]')) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     const rotateHandle = event.target.closest('[data-rotate-handle]');
     if (rotateHandle && activeImage && editor.contains(activeImage)) {
       event.preventDefault();
@@ -4749,14 +6405,11 @@
       maxWidth: 10000,
       cropInsets: readImageCrop(activeImage),
       fixedPoint: getImageHandlePoint(activeImage,
-        handle.dataset.resizeCorner === 'nw' || handle.dataset.resizeCorner === 'sw' ? activeImage.offsetWidth / 2 : -activeImage.offsetWidth / 2,
-        handle.dataset.resizeCorner === 'nw' || handle.dataset.resizeCorner === 'ne' ? activeImage.offsetHeight / 2 : -activeImage.offsetHeight / 2)
+        handle.dataset.resizeCorner.endsWith('e') ? -activeImage.offsetWidth / 2
+          : handle.dataset.resizeCorner.endsWith('w') ? activeImage.offsetWidth / 2 : 0,
+        handle.dataset.resizeCorner.startsWith('n') ? activeImage.offsetHeight / 2
+          : handle.dataset.resizeCorner.startsWith('s') ? -activeImage.offsetHeight / 2 : 0)
     };
-  });
-  imageManipulators.addEventListener('click', (event) => {
-    if (!event.target.closest('[data-image-options-handle]') || !activeImage || !editor.contains(activeImage)) return;
-    imageToolbar.hidden = !imageToolbar.hidden;
-    positionImageToolbar(activeImage.getBoundingClientRect());
   });
   document.addEventListener('pointermove', (event) => {
     if (imageDrag && imageDrag.pointerId === event.pointerId) {
@@ -4817,9 +6470,13 @@
     }
     const aspect = Number.isFinite(drag.aspect) && drag.aspect > 0 ? drag.aspect : 1;
     let widthChange;
-    if (drag.corner === 'e' || drag.corner === 'w') widthChange = dx;
-    else if (drag.corner === 'n' || drag.corner === 's') widthChange = dy * aspect;
-    else widthChange = (dx + dy / aspect) / (1 + 1 / (aspect * aspect));
+    if (drag.corner === 'e' || drag.corner === 'w') {
+      widthChange = (drag.corner.endsWith('w') ? -1 : 1) * dx;
+    } else if (drag.corner === 'n' || drag.corner === 's') {
+      widthChange = (drag.corner.startsWith('s') ? 1 : -1) * dy * aspect;
+    } else {
+      widthChange = (dx + dy / aspect) / (1 + 1 / (aspect * aspect));
+    }
     const isWest = drag.corner.endsWith('w');
     const isNorth = drag.corner.startsWith('n');
     const maxWidth = drag.maxWidth;
@@ -4828,16 +6485,20 @@
     drag.image.setAttribute('width', String(Math.round(width)));
     if (drag.image.dataset.imageWrap === 'free') {
       const pageBounds = editor.getBoundingClientRect();
-      const anchorX = (isWest ? 1 : -1) * width / 2;
-      const anchorY = (isNorth ? 1 : -1) * height / 2;
-      const fixedX = drag.fixedPoint.left - (
-        anchorX * drag.scaleX * Math.cos(drag.rotation) - anchorY * drag.scaleY * Math.sin(drag.rotation));
-      const fixedY = drag.fixedPoint.top - (
-        anchorX * drag.scaleX * Math.sin(drag.rotation) + anchorY * drag.scaleY * Math.cos(drag.rotation));
-      const left = (fixedX - pageBounds.left) / drag.scaleX - width / 2;
-      const top = (fixedY - pageBounds.top) / drag.scaleY - height / 2;
-      drag.image.style.left = `${Math.max(-10000, Math.min(drag.pageWidth, left))}px`;
-      drag.image.style.top = `${Math.max(-10000, Math.min(drag.pageHeight, top))}px`;
+      const left = drag.corner.endsWith('w')
+        ? drag.left + (drag.width - width)
+        : drag.left;
+      const top = isNorth
+        ? drag.top + (drag.height - height)
+        : drag.top;
+      const nextLeft = Math.max(-10000, Math.min(drag.pageWidth, left));
+      const nextTop = Math.max(-10000, Math.min(drag.pageHeight, top));
+      drag.image.style.left = `${nextLeft}px`;
+      drag.image.style.top = `${nextTop}px`;
+      if (drag.corner === 'n' || drag.corner === 's') {
+        const fixedTop = drag.corner.startsWith('s') ? drag.top : nextTop;
+        drag.image.style.top = `${fixedTop}px`;
+      }
     }
     refreshImageManipulators(drag.image);
     positionImageToolbar(drag.image.getBoundingClientRect());
@@ -4866,13 +6527,55 @@
   };
   document.addEventListener('pointerup', finishImagePointer);
   document.addEventListener('pointercancel', finishImagePointer);
+  const enterShapeTextEdit = (shape, event) => {
+    const wasEditing = shape.getAttribute('contenteditable') === 'true';
+    let label = shape.querySelector('[data-shape-label="true"]');
+    if (!label) {
+      label = document.createElement('span');
+      label.dataset.shapeLabel = 'true';
+      shape.append(label);
+    }
+    shape.setAttribute('contenteditable', 'true');
+    shape.setAttribute('tabindex', '0');
+    if (wasEditing) return;
+    shape.focus({ preventScroll: true });
+    const selection = window.getSelection();
+    const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+    if (selection && range && shape.contains(range.startContainer)) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else if (selection) {
+      const fallbackRange = document.createRange();
+      fallbackRange.selectNodeContents(label);
+      fallbackRange.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(fallbackRange);
+    }
+  };
+  editor.addEventListener('keydown', (event) => {
+    const watermark = event.target.closest('[data-watermark]');
+    if (!watermark || !editor.contains(watermark) || !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    showWatermarkToolbar(watermark);
+  });
   editor.addEventListener('click', (event) => {
-    const shape = event.target.closest('.editor-shape');
+    const pointerDownShape = event.detail > 0 ? shapePointerDown : null;
+    shapePointerDown = null;
+    const shape = event.target.closest('.editor-shape') ||
+      (pointerDownShape && editor.contains(pointerDownShape.shape) ? pointerDownShape.shape : null);
     if (shape && editor.contains(shape)) {
       showShapeToolbar(shape);
+      if (shape.dataset.editorTextbox !== 'true' && shape.getAttribute('contenteditable') !== 'true') {
+        enterShapeTextEdit(shape, pointerDownShape?.shape === shape ? pointerDownShape : event);
+      }
       return;
     }
-    const watermark = event.target.closest('[data-watermark]');
+    const watermark = event.target.closest('[data-watermark]') ||
+      Array.from(editor.querySelectorAll('[data-watermark]')).reverse().find((candidate) => {
+        const bounds = candidate.getBoundingClientRect();
+        return event.clientX >= bounds.left && event.clientX <= bounds.right &&
+          event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+      });
     if (watermark && editor.contains(watermark)) {
       showWatermarkToolbar(watermark);
       return;
@@ -4899,6 +6602,12 @@
     activeImage = null;
     if (activeShape) activeShape.classList.remove('shape-selected');
     activeShape = null;
+    hideShapeFormatTabs();
+    pictureFormatTab.hidden = true;
+    if (shapeFormatTab.classList.contains('active') || textboxFormatTab.classList.contains('active') ||
+      pictureFormatTab.classList.contains('active')) {
+      document.querySelector('.tab-button[data-tab="home"]').click();
+    }
     shapeToolbar.hidden = true;
     shapeManipulators.hidden = true;
     shapeManipulators.replaceChildren();
@@ -4922,10 +6631,14 @@
   });
   document.addEventListener('click', (event) => {
     if (!imageCropMode || !activeImage) return;
-    if (event.target.closest('#editor img, #image-context-toolbar, #image-manipulators')) return;
+    if (event.target.closest('#editor img, #image-context-toolbar, #image-manipulators, [data-panel="picture-format"]')) return;
     activeImage.classList.remove('image-selected', 'image-crop-active');
     activeImage = null;
     imageCropMode = false;
+    pictureFormatTab.hidden = true;
+    if (pictureFormatTab.classList.contains('active')) {
+      activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+    }
     imageToolbar.dataset.cropMode = 'false';
     imageToolbar.hidden = true;
     imageManipulators.hidden = true;
@@ -4936,22 +6649,7 @@
     const shape = event.target.closest('.editor-shape:not(.editor-textbox)');
     if (shape && editor.contains(shape)) {
       showShapeToolbar(shape);
-      let label = shape.querySelector('[data-shape-label="true"]');
-      if (!label) {
-        label = document.createElement('span');
-        label.dataset.shapeLabel = 'true';
-        shape.append(label);
-      }
-      shape.setAttribute('contenteditable', 'true');
-      shape.setAttribute('tabindex', '0');
-      shape.focus();
-      const range = document.createRange();
-      range.selectNodeContents(label);
-      range.collapse(false);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      event.preventDefault();
+      if (shape.getAttribute('contenteditable') !== 'true') enterShapeTextEdit(shape, event);
       return;
     }
     const table = event.target.closest('table');
@@ -5006,6 +6704,10 @@
       tableToolbar.hidden = true;
       tableManipulators.replaceChildren();
       document.body.classList.remove('table-tools-open');
+      tableLayoutTab.hidden = true;
+      if (tableLayoutTab.classList.contains('active')) {
+        activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+      }
     }
     if (selectedObject && !editor.contains(selectedObject)) setSelectedObject(null);
   });
@@ -5032,9 +6734,149 @@
     element.style.zIndex = String(next);
     scheduleSave();
   };
+  document.querySelectorAll('[data-shape-layer]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (activeShape && editor.contains(activeShape)) changeElementLayer(activeShape, Number(button.dataset.shapeLayer));
+    });
+  });
+  document.querySelectorAll('[data-shape-rotate]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!activeShape || !editor.contains(activeShape)) return;
+      setShapeRotation(activeShape, (Number(activeShape.dataset.shapeRotation) || 0) + Number(button.dataset.shapeRotate));
+      imageRotationIndicator.hidden = true;
+      refreshShapeManipulators(activeShape);
+      scheduleSave();
+    });
+  });
+  document.querySelectorAll('[data-shape-style]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!activeShape || !editor.contains(activeShape)) return;
+      const styles = {
+        blue: { fill: '#dce8f5', line: '#176b9a' },
+        dark: { fill: '#365c73', line: '#26313b' },
+        light: { fill: '#ffffff', line: '#8faec1' }
+      };
+      const style = styles[button.dataset.shapeStyle];
+      if (!style) return;
+      const fill = document.getElementById('shape-fill-color');
+      fill.value = style.fill;
+      fill.dispatchEvent(new Event('input', { bubbles: true }));
+      const outline = document.getElementById('shape-line-color');
+      outline.value = style.line;
+      outline.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('shape-ribbon-fill').value = style.fill;
+      document.querySelector('[data-shape-color-swatch="fill"]').style.backgroundColor = style.fill;
+      document.getElementById('shape-ribbon-outline').value = style.line;
+      document.querySelector('[data-shape-color-swatch="outline"]').style.backgroundColor = style.line;
+    });
+  });
+  document.querySelectorAll('[data-shape-text-style]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!activeShape || !editor.contains(activeShape)) return;
+      let label = activeShape.querySelector('[data-shape-label="true"]');
+      if (!label) {
+        label = document.createElement('span');
+        label.dataset.shapeLabel = 'true';
+        activeShape.append(label);
+      }
+      if (button.dataset.shapeTextStyle === 'normal') delete label.dataset.shapeTextStyle;
+      else label.dataset.shapeTextStyle = button.dataset.shapeTextStyle;
+      scheduleSave();
+    });
+  });
+  document.getElementById('shape-ribbon-fill').addEventListener('input', (event) => {
+    document.querySelector('[data-shape-color-swatch="fill"]').style.backgroundColor = event.currentTarget.value;
+    const fill = document.getElementById('shape-fill-color');
+    fill.value = event.currentTarget.value;
+    fill.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  document.getElementById('shape-ribbon-outline').addEventListener('input', (event) => {
+    document.querySelector('[data-shape-color-swatch="outline"]').style.backgroundColor = event.currentTarget.value;
+    const outline = document.getElementById('shape-line-color');
+    outline.value = event.currentTarget.value;
+    outline.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const shapeTextColorInput = document.getElementById('shape-ribbon-text-color');
+  let shapeTextColorRange = null;
+  const rememberShapeTextSelection = () => {
+    const label = activeShape?.querySelector('[data-shape-label="true"]');
+    const selection = window.getSelection();
+    shapeTextColorRange = label && selection?.rangeCount &&
+      label.contains(selection.anchorNode) && label.contains(selection.focusNode)
+      ? selection.getRangeAt(0).cloneRange()
+      : null;
+  };
+  shapeTextColorInput.closest('.color-picker').addEventListener('pointerdown', rememberShapeTextSelection, true);
+  shapeTextColorInput.closest('.color-picker').addEventListener('keydown', rememberShapeTextSelection, true);
+  shapeTextColorInput.addEventListener('input', (event) => {
+    document.querySelector('[data-shape-color-swatch="text"]').style.backgroundColor = event.currentTarget.value;
+    if (!activeShape || !editor.contains(activeShape)) return;
+    let label = activeShape.querySelector('[data-shape-label="true"]');
+    if (!label) {
+      label = document.createElement('span');
+      label.dataset.shapeLabel = 'true';
+      activeShape.append(label);
+    }
+    const color = event.currentTarget.value;
+    const range = shapeTextColorRange && label.contains(shapeTextColorRange.commonAncestorContainer)
+      ? shapeTextColorRange
+      : null;
+    shapeTextColorRange = null;
+    if (range && !range.collapsed) {
+      const coloredText = document.createElement('span');
+      coloredText.style.color = color;
+      coloredText.append(range.extractContents());
+      range.insertNode(coloredText);
+      const selection = window.getSelection();
+      const updatedRange = document.createRange();
+      updatedRange.selectNodeContents(coloredText);
+      selection?.removeAllRanges();
+      selection?.addRange(updatedRange);
+    } else {
+      const coloredCaret = document.createElement('span');
+      coloredCaret.style.color = color;
+      coloredCaret.textContent = '\u200b';
+      if (range) {
+        range.insertNode(coloredCaret);
+        range.setStart(coloredCaret.firstChild, 1);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      } else {
+        label.dataset.shapeTextColor = color;
+        label.style.color = color;
+      }
+    }
+    scheduleSave();
+  });
+  document.getElementById('shape-ribbon-outline-width').addEventListener('input', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    if (event.currentTarget.value === '') return;
+    const width = Number(event.currentTarget.value);
+    if (Number.isFinite(width) && width >= 0 && width <= 100) setShapeLineWidth(activeShape, width);
+  });
+  [document.getElementById('shape-line-width'), document.getElementById('shape-ribbon-outline-width')]
+    .forEach((input) => input.addEventListener('change', (event) => {
+      if (!activeShape || !editor.contains(activeShape)) return;
+      const current = Number(event.currentTarget.value);
+      const width = event.currentTarget.value === '' || !Number.isFinite(current)
+        ? Number(activeShape.dataset.shapeLineWidth ?? 2)
+        : Math.max(0, Math.min(100, current));
+      event.currentTarget.value = String(width);
+      setShapeLineWidth(activeShape, width);
+    }));
+  document.getElementById('shape-ribbon-shadow').addEventListener('change', (event) => {
+    if (!activeShape || !editor.contains(activeShape)) return;
+    activeShape.dataset.shapeShadow = String(event.currentTarget.checked);
+    scheduleSave();
+  });
+  document.getElementById('shape-ribbon-delete').addEventListener('click', removeSelectedShape);
   document.querySelectorAll('[data-object-layer]').forEach((button) => {
     button.addEventListener('click', () => {
-      const object = button.closest('#image-context-toolbar') ? activeImage : activeShape;
+      const object = button.closest('[data-panel="picture-format"], #image-context-toolbar')
+        ? activeImage
+        : activeShape;
       changeElementLayer(object, Number(button.dataset.objectLayer));
     });
   });
@@ -5218,6 +7060,21 @@
         grip.style.top = `${bounds.top}px`;
         grip.style.height = `${bounds.height}px`;
         grips.push(grip);
+        if (side === 'right') {
+          const isRtl = getComputedStyle(table).direction === 'rtl';
+          const addColumn = makeTableGrip(
+            'insert-column-edge',
+            isRtl ? 0 : columnCount - 1,
+            'table-insert-grip',
+            'Insert column at the right edge'
+          );
+          addColumn.dataset.insertPosition = isRtl ? 'left' : 'right';
+          addColumn.textContent = '+';
+          addColumn.style.left = `${bounds.right}px`;
+          addColumn.style.top = `${bounds.top}px`;
+          addColumn.style.display = 'none';
+          grips.push(addColumn);
+        }
       });
     }
     if (columnCount > 1) {
@@ -5244,16 +7101,15 @@
     }
     for (let index = 0; index < table.rows.length - 1; index += 1) {
       const first = table.rows[index].getBoundingClientRect();
-      const second = table.rows[index + 1].getBoundingClientRect();
       const grip = makeTableGrip('row', index, 'row-grip', `Resize row ${index + 1}`);
-      grip.style.top = `${(first.bottom + second.top) / 2}px`;
+      grip.style.top = `${first.bottom}px`;
       grip.style.left = `${bounds.left}px`;
       grip.style.width = `${bounds.width}px`;
       grips.push(grip);
       const addRow = makeTableGrip('insert-row', index, 'table-insert-grip', `Insert row below row ${index + 1}`);
       addRow.textContent = '+';
-      addRow.style.left = `${bounds.left}px`;
-      addRow.style.top = `${(first.bottom + second.top) / 2}px`;
+      addRow.style.left = `${bounds.left - 10}px`;
+      addRow.style.top = `${first.bottom}px`;
       addRow.style.display = 'none';
       grips.push(addRow);
     }
@@ -5264,6 +7120,17 @@
       bottomGrip.style.left = `${bounds.left}px`;
       bottomGrip.style.width = `${bounds.width}px`;
       grips.push(bottomGrip);
+      const addRow = makeTableGrip(
+        'insert-row',
+        table.rows.length - 1,
+        'table-insert-grip',
+        'Insert row below the last row'
+      );
+      addRow.textContent = '+';
+      addRow.style.left = `${bounds.left - 10}px`;
+      addRow.style.top = `${bounds.bottom}px`;
+      addRow.style.display = 'none';
+      grips.push(addRow);
     }
     if (selectedTableBand && selectedTableBand.table === table && selectedTableBand.axis) {
       const position = getTableBandHandlePosition(selectedTableBand);
@@ -5284,15 +7151,35 @@
     tableManipulators.hidden = false;
   };
   tableManipulators.addEventListener('pointermove', (event) => {
-    if (event.target.closest('.table-insert-grip')) return;
-    const grip = event.target.closest('.column-grip, .row-grip');
+    const insertGrip = event.target.closest('.table-insert-grip');
+    if (insertGrip) {
+      tableManipulators.querySelectorAll('.column-grip, .row-grip, .table-edge-grip')
+        .forEach((item) => item.classList.remove('is-insert-hover'));
+      const { gripKind, gripIndex } = insertGrip.dataset;
+      const sourceKind = gripKind === 'insert-column-edge'
+        ? 'right-edge'
+        : gripKind === 'insert-column' ? 'column' : 'row';
+      tableManipulators.querySelector(
+        `[data-grip-kind="${sourceKind}"][data-grip-index="${gripIndex}"]`
+      )?.classList.add('is-insert-hover');
+      return;
+    }
+    const grip = event.target.closest('.column-grip, .row-grip, .table-edge-grip');
+    tableManipulators.querySelectorAll('.is-insert-hover')
+      .forEach((item) => item.classList.remove('is-insert-hover'));
     if (!grip) {
       tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => { item.style.display = 'none'; });
       return;
     }
-    const isColumn = grip.classList.contains('column-grip');
+    const isEdgeColumn = grip.classList.contains('table-edge-grip') &&
+      grip.dataset.gripKind === 'right-edge';
+    const isColumn = grip.classList.contains('column-grip') || isEdgeColumn;
+    if (grip.classList.contains('table-edge-grip') && !isEdgeColumn) {
+      tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => { item.style.display = 'none'; });
+      return;
+    }
     const addGrip = tableManipulators.querySelector(
-      `[data-grip-kind="${isColumn ? 'insert-column' : 'insert-row'}"][data-grip-index="${grip.dataset.gripIndex}"]`);
+      `[data-grip-kind="${isEdgeColumn ? 'insert-column-edge' : isColumn ? 'insert-column' : 'insert-row'}"][data-grip-index="${grip.dataset.gripIndex}"]`);
     if (!addGrip || !activeTable) {
       tableManipulators.querySelectorAll('.table-insert-grip').forEach((item) => { item.style.display = 'none'; });
       return;
@@ -5306,17 +7193,21 @@
     addGrip.style.display = 'grid';
     if (isColumn) {
       addGrip.style.left = `${grip.getBoundingClientRect().left + grip.getBoundingClientRect().width / 2}px`;
-      addGrip.style.top = `${bounds.top}px`;
+      addGrip.style.top = `${bounds.top - 9}px`;
     } else {
       addGrip.style.left = `${bounds.left}px`;
       addGrip.style.top = `${(grip.getBoundingClientRect().top + grip.getBoundingClientRect().bottom) / 2}px`;
     }
   });
   document.addEventListener('pointermove', (event) => {
-    if (event.target.closest('.column-grip, .row-grip, .table-insert-grip')) return;
+    if (event.target.closest('.column-grip, .row-grip, .table-edge-grip, .table-insert-grip')) return;
+    tableManipulators.querySelectorAll('.is-insert-hover')
+      .forEach((grip) => grip.classList.remove('is-insert-hover'));
     tableManipulators.querySelectorAll('.table-insert-grip').forEach((grip) => { grip.style.display = 'none'; });
   });
   tableManipulators.addEventListener('pointerleave', () => {
+    tableManipulators.querySelectorAll('.is-insert-hover')
+      .forEach((grip) => grip.classList.remove('is-insert-hover'));
     tableManipulators.querySelectorAll('.table-insert-grip').forEach((grip) => { grip.style.display = 'none'; });
   });
   let tableDrag = null;
@@ -5329,6 +7220,22 @@
     preview.append(insertionMarker);
     tableManipulators.append(preview);
     return { element: preview, insertionMarker };
+  };
+  const restoreTableDragCaret = (drag) => {
+    drag.table.classList.remove('table-caret-suspended');
+    if (!drag.caretRange || !drag.caretCell || !editor.contains(drag.caretCell) ||
+      !drag.table.contains(drag.caretCell) || !drag.table.contains(drag.caretRange.startContainer)) {
+      updateTableCaretOverlay();
+      return;
+    }
+    const selection = window.getSelection();
+    if (!selection) return;
+    editor.focus();
+    selection.removeAllRanges();
+    selection.addRange(drag.caretRange);
+    savedEditorRange = drag.caretRange.cloneRange();
+    activeCaretTableCell = drag.caretCell;
+    updateTableCaretOverlay();
   };
   const hideTableReorderPreview = (drag) => {
     drag.preview.element.hidden = true;
@@ -5447,7 +7354,15 @@
     const rowBounds = row && row.getBoundingClientRect();
     let firstColumnWidth = 0;
     let secondColumnWidth = 0;
+    let columnRowsToPreserve = [];
     if (kind === 'column') {
+      columnRowsToPreserve = rows.flatMap((tableRow) => {
+        const height = tableRow.getBoundingClientRect().height;
+        const specifiedHeight = Number.parseFloat(tableRow.style.height);
+        const manuallySized = tableRow.dataset.tableRowHeight === 'manual' ||
+          (Number.isFinite(specifiedHeight) && height > getMinimumTableRowHeight(tableRow) + 2);
+        return manuallySized ? [{ row: tableRow, height }] : [];
+      });
       const widths = ensureTableColumnGroup(table);
       firstColumnWidth = widths[index];
       secondColumnWidth = widths[index + 1];
@@ -5467,14 +7382,31 @@
       })
       : [];
     const isFreeMove = kind === 'move';
+    const preservesTableCaret = ['move', 'left-edge', 'right-edge', 'column', 'row'].includes(kind);
     const moveTableBounds = isFreeMove ? table.getBoundingClientRect() : null;
     const movePageBounds = isFreeMove ? editor.getBoundingClientRect() : null;
     const moveScaleX = isFreeMove ? movePageBounds.width / editor.offsetWidth : 1;
     const moveScaleY = isFreeMove ? movePageBounds.height / editor.offsetHeight : 1;
+    const tableScaleY = table.getBoundingClientRect().height / Math.max(1, table.offsetHeight);
+    const currentSelection = window.getSelection();
+    const caretRange = preservesTableCaret && currentSelection?.isCollapsed &&
+      currentSelection.rangeCount && table.contains(currentSelection.anchorNode)
+      ? currentSelection.getRangeAt(0).cloneRange()
+      : null;
+    const caretAnchor = currentSelection?.anchorNode;
+    const caretElement = caretAnchor instanceof Element ? caretAnchor : caretAnchor?.parentElement;
+    const caretCell = caretRange ? caretElement?.closest('td, th') : null;
+    if (caretRange && caretCell && table.contains(caretCell)) {
+      table.classList.add('table-caret-suspended');
+      tableCaretOverlay.hidden = true;
+    }
     tableDrag = {
       kind, index, table, pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
       rowBounds, firstColumnWidth, secondColumnWidth,
+      columnRowsToPreserve,
+      caretRange, caretCell,
       rowHeight: rowBounds ? rowBounds.height : 0,
+      scaleY: tableScaleY || 1,
       tableBounds: isEdgeResize ? table.getBoundingClientRect() : null,
       pageBounds: isEdgeResize ? editor.getBoundingClientRect() : null,
       originalMarginLeft: isEdgeResize ? Number.parseFloat(getComputedStyle(table).marginLeft) : 0,
@@ -5516,6 +7448,7 @@
       table.style.top = `${Math.max(0, Math.min(freeMove.pageHeight - freeMove.height,
         freeMove.top + dy / freeMove.scaleY))}px`;
     } else if (kind === 'left-edge' || kind === 'right-edge') {
+      releaseContentSizedRows(table, true);
       const { tableBounds, pageBounds, originalMarginLeft, originalMarginRight, edgeCells } = tableDrag;
       if (!tableBounds || !pageBounds) return;
       const edgeDelta = kind === 'left-edge' ? -dx : dx;
@@ -5537,6 +7470,10 @@
         cell.style.width = `${width + delta}px`;
       });
     } else if (kind === 'column') {
+      tableDrag.columnRowsToPreserve.forEach(({ row }) => {
+        row.dataset.tableRowHeight = 'manual';
+      });
+      releaseContentSizedRows(table);
       const widths = getTableColumnWidths(table);
       const isRtl = getComputedStyle(table).direction === 'rtl';
       const leftColumn = isRtl ? index + 1 : index;
@@ -5547,15 +7484,26 @@
       widths[leftColumn] = leftWidth + delta;
       widths[rightColumn] = rightWidth - delta;
       setTableColumnWidths(table, widths);
+      tableDrag.columnRowsToPreserve.forEach(({ row, height }) => {
+        const preservedHeight = Math.max(height, getMinimumTableRowHeight(row));
+        row.style.height = `${preservedHeight}px`;
+        Array.from(row.cells).forEach((cell) => {
+          cell.style.height = `${preservedHeight}px`;
+        });
+      });
     } else if (kind === 'row') {
       const row = table.rows[index];
       if (!row) return;
-      const rowHeight = Math.max(MIN_TABLE_ROW_HEIGHT, tableDrag.rowHeight + dy);
+      const rowHeight = Math.max(getMinimumTableRowHeight(row), tableDrag.rowHeight + dy / tableDrag.scaleY);
       row.style.height = `${rowHeight}px`;
+      row.dataset.tableRowHeight = 'manual';
       Array.from(row.cells).forEach((cell) => { cell.style.height = `${rowHeight}px`; });
       if (activeTableCell && activeTableCell.parentElement === row) {
         updateTableCaretOverlay();
       }
+    }
+    if (kind !== 'move' && kind !== 'row-reorder' && kind !== 'column-reorder') {
+      normalizeTableRowHeights(table);
     }
     if (kind !== 'row-reorder' && kind !== 'column-reorder') refreshTableManipulators(table);
     positionTableToolbar(activeTableCell || table.querySelector('td, th'));
@@ -5597,6 +7545,7 @@
   };
   document.addEventListener('pointerup', (event) => {
     if (!tableDrag || tableDrag.pointerId !== event.pointerId) return;
+    const completedDrag = tableDrag;
     let reordered = false;
     if (tableDrag.active && tableDrag.dropIndex !== null && tableDrag.kind === 'row-reorder') {
       reordered = reorderSelectedRows(tableDrag.selection, tableDrag.dropIndex);
@@ -5609,22 +7558,29 @@
       tableDrag.kind !== 'column-reorder');
     tableDrag = null;
     if (table && editor.contains(table)) refreshTableManipulators(table);
-    if (changed) scheduleSave();
+    if (completedDrag.caretRange) {
+      window.requestAnimationFrame(() => restoreTableDragCaret(completedDrag));
+    }
+    if (changed) scheduleSave(historyLabelForTableDrag(completedDrag.kind, completedDrag.index));
   });
   document.addEventListener('pointercancel', (event) => {
     if (tableBandDrag && tableBandDrag.pointerId === event.pointerId) tableBandDrag = null;
     if (!tableDrag || tableDrag.pointerId !== event.pointerId) return;
+    const cancelledDrag = tableDrag;
     const table = tableDrag.table;
     const changed = tableDrag.kind !== 'row-reorder' && tableDrag.kind !== 'column-reorder';
     if (tableDrag.preview) tableDrag.preview.element.remove();
     tableDrag = null;
     if (table && editor.contains(table)) refreshTableManipulators(table);
-    if (changed) scheduleSave();
+    if (cancelledDrag.caretRange) {
+      window.requestAnimationFrame(() => restoreTableDragCaret(cancelledDrag));
+    }
+    if (changed) scheduleSave(historyLabelForTableDrag(cancelledDrag.kind, cancelledDrag.index));
   });
   window.addEventListener('resize', () => {
-    if (activeShape && editor.contains(activeShape) && !shapeToolbar.hidden) {
+    if (activeShape && editor.contains(activeShape)) {
       refreshShapeManipulators(activeShape);
-      positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
+      if (!shapeToolbar.hidden) positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
     }
     if (activeTable) refreshTableManipulators(activeTable);
     if (activeTableCell && !tableToolbar.hidden) positionTableToolbar(activeTableCell);
@@ -5634,23 +7590,25 @@
     }
     if (activeWatermark && editor.contains(activeWatermark) && !watermarkToolbar.hidden) {
       refreshWatermarkManipulators(activeWatermark);
-      positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
+      positionWatermarkToolbar(activeWatermark);
     }
   });
-  document.addEventListener('scroll', () => {
+  document.addEventListener('scroll', (event) => {
     syncVerticalRuler();
-    if (activeShape && editor.contains(activeShape) && !shapeToolbar.hidden) {
+    if (activeShape && editor.contains(activeShape)) {
       refreshShapeManipulators(activeShape);
-      positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
+      if (!shapeToolbar.hidden) positionContextToolbar(shapeToolbar, activeShape.getBoundingClientRect());
     }
     if (activeTable) refreshTableManipulators(activeTable);
     if (activeImage && editor.contains(activeImage) && !imageRotateDrag) {
       refreshImageManipulators(activeImage);
       if (!imageToolbar.hidden) positionImageToolbar(activeImage.getBoundingClientRect());
     }
-    if (activeWatermark && editor.contains(activeWatermark) && !watermarkToolbar.hidden) {
-      refreshWatermarkManipulators(activeWatermark);
-      positionContextToolbar(watermarkToolbar, activeWatermark.getBoundingClientRect());
+    if (activeWatermark && editor.contains(activeWatermark) && !watermarkToolbar.contains(event.target)) {
+      activeWatermark.classList.remove('watermark-selected');
+      watermarkToolbar.hidden = true;
+      watermarkManipulators.hidden = true;
+      watermarkManipulators.replaceChildren();
     }
   }, true);
   [tableToolbar, imageToolbar, watermarkToolbar, tableLayoutPanel].forEach((toolbar) => {
@@ -5840,6 +7798,11 @@
       });
       sourceRow.parentElement.insertBefore(newRow, sourceRow.nextSibling);
       focusTableCell(newRow.cells[0]);
+    } else if (grip.dataset.gripKind === 'insert-column-edge') {
+      if (!canExpandTable(table, 0, 1)) return;
+      const insertionIndex = insertTableColumn(table, index, grip.dataset.insertPosition);
+      if (insertionIndex === null) return;
+      focusTableCell(table.rows[0].cells[insertionIndex]);
     } else {
       if (!canExpandTable(table, 0, 1)) return;
       const insertionIndex = insertTableColumn(table, index);
@@ -6184,6 +8147,7 @@
     imageCropMode = !imageCropMode;
     imageToolbar.dataset.cropMode = String(imageCropMode);
     event.currentTarget.setAttribute('aria-pressed', String(imageCropMode));
+    event.currentTarget.querySelector('span').textContent = imageCropMode ? 'Finish' : 'Crop';
     event.currentTarget.title = imageCropMode ? 'Finish cropping' : 'Crop picture';
     event.currentTarget.setAttribute('aria-label', imageCropMode ? 'Finish cropping' : 'Crop picture');
     activeImage.classList.toggle('image-crop-active', imageCropMode);
@@ -6206,12 +8170,26 @@
   });
   document.getElementById('image-border-width').addEventListener('input', (event) => {
     if (!activeImage || !editor.contains(activeImage)) return;
+    if (event.currentTarget.value === '') return;
     const width = Number(event.currentTarget.value);
+    if (!Number.isFinite(width) || width < 0 || width > 100) return;
     activeImage.dataset.imageBorderWidth = String(width);
     activeImage.style.border = width
       ? `${width}px solid ${activeImage.dataset.imageBorderColor || '#176b9a'}`
       : 'none';
-    document.getElementById('image-border-width-value').value = `${width} px`;
+    scheduleSave();
+  });
+  document.getElementById('image-border-width').addEventListener('change', (event) => {
+    if (!activeImage || !editor.contains(activeImage)) return;
+    const current = Number(event.currentTarget.value);
+    const width = event.currentTarget.value === '' || !Number.isFinite(current)
+      ? Number(activeImage.dataset.imageBorderWidth || 0)
+      : Math.max(0, Math.min(100, current));
+    event.currentTarget.value = String(width);
+    activeImage.dataset.imageBorderWidth = String(width);
+    activeImage.style.border = width
+      ? `${width}px solid ${activeImage.dataset.imageBorderColor || '#176b9a'}`
+      : 'none';
     scheduleSave();
   });
   document.getElementById('image-radius').addEventListener('input', (event) => {
@@ -6233,8 +8211,12 @@
   document.getElementById('image-delete').addEventListener('click', () => {
     if (activeImage && editor.contains(activeImage)) activeImage.remove();
     activeImage = null;
+    pictureFormatTab.hidden = true;
     imageToolbar.hidden = true;
     imageManipulators.hidden = true;
+    if (pictureFormatTab.classList.contains('active')) {
+      activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+    }
     scheduleSave();
     updateCounts();
   });
@@ -6244,9 +8226,13 @@
     if (!activeImage || !editor.contains(activeImage)) return;
     activeImage.remove();
     activeImage = null;
+    pictureFormatTab.hidden = true;
     imageToolbar.hidden = true;
     imageManipulators.hidden = true;
     imageManipulators.replaceChildren();
+    if (pictureFormatTab.classList.contains('active')) {
+      activateRibbonTab(document.querySelector('.tab-button[data-tab="home"]'));
+    }
     scheduleSave();
     updateCounts();
   };
@@ -6341,60 +8327,36 @@
   });
   const activateRibbonTab = (button) => {
     const homeSelected = button.dataset.tab === 'home';
-    const keyboardSelected = button.dataset.tab === 'keyboard';
-    const isMobileEditor = window.matchMedia('(max-width: 760px)').matches;
+    const textboxSelected = button === textboxFormatTab || button.dataset.tab === 'textbox-format';
+    const shapeSelected = button === shapeFormatTab || button.dataset.tab === 'shape-format' || textboxSelected;
+    const pictureSelected = button === pictureFormatTab || button.dataset.tab === 'picture-format';
     document.body.classList.toggle('home-ribbon-active', homeSelected);
-    document.querySelector('.ribbon-shell').classList.toggle('home-ribbon', homeSelected);
+    document.body.classList.toggle('shape-ribbon-active', shapeSelected);
+    document.body.classList.toggle('picture-ribbon-active', pictureSelected);
+    document.body.classList.remove('mobile-ribbon-collapsed');
+    const ribbonShell = document.querySelector('.ribbon-shell');
+    ribbonShell.classList.toggle('home-ribbon', homeSelected);
+    ribbonShell.classList.toggle('shape-format-ribbon', shapeSelected);
+    ribbonShell.classList.toggle('picture-format-ribbon', pictureSelected);
     closeLayoutMenus();
     if (button !== tableLayoutTab) tableLayoutTab.hidden = true;
-    if (isMobileEditor) {
-      document.body.classList.add('mobile-tools-open');
-      document.body.classList.toggle('mobile-keyboard-active', keyboardSelected);
-      if (keyboardSelected) {
-        onscreenKeyboard.hidden = false;
-        keyboardToggle.setAttribute('aria-expanded', 'true');
-        keyboardToggle.closest('.keyboard-sidebar').classList.add('keyboard-open');
-        document.body.classList.add('landscape-keyboard-open');
-      } else {
-        onscreenKeyboard.hidden = true;
-        keyboardToggle.setAttribute('aria-expanded', 'false');
-        keyboardToggle.closest('.keyboard-sidebar').classList.remove('keyboard-open');
-        document.body.classList.remove('landscape-keyboard-open');
-      }
-    } else {
-      document.body.classList.remove('mobile-keyboard-active', 'mobile-tools-open');
-    }
+    if (button !== shapeFormatTab) shapeFormatTab.hidden = true;
+    if (button !== textboxFormatTab) textboxFormatTab.hidden = true;
+    if (button !== pictureFormatTab) pictureFormatTab.hidden = true;
     document.querySelectorAll('.tab-button').forEach((tab) => tab.classList.toggle('active', tab === button));
+    const panelName = textboxSelected ? 'shape-format' : button.dataset.tab;
     document.querySelectorAll('.ribbon-panel').forEach((panel) => {
-      panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab);
+      panel.classList.toggle('active', panel.dataset.panel === panelName);
     });
   };
   document.querySelectorAll('.tab-button').forEach((button) => {
-    button.addEventListener('click', () => activateRibbonTab(button));
-  });
-  const mobileEditorQuery = window.matchMedia('(max-width: 760px)');
-  if (mobileEditorQuery.matches) document.body.classList.add('mobile-tools-open');
-  mobileEditorQuery.addEventListener('change', (event) => {
-    if (event.matches) {
-      document.body.classList.add('mobile-tools-open');
-      if (document.getElementById('mobile-keyboard-tab').classList.contains('active')) {
-        onscreenKeyboard.hidden = false;
-        keyboardToggle.setAttribute('aria-expanded', 'true');
-        keyboardToggle.closest('.keyboard-sidebar').classList.add('keyboard-open');
-        document.body.classList.add('mobile-keyboard-active', 'landscape-keyboard-open');
+    button.addEventListener('click', () => {
+      const wasActive = button.classList.contains('active');
+      activateRibbonTab(button);
+      if (window.matchMedia('(max-width: 767px)').matches && wasActive) {
+        document.body.classList.toggle('mobile-ribbon-collapsed');
       }
-      return;
-    }
-    if (document.body.classList.contains('mobile-keyboard-active')) {
-      onscreenKeyboard.hidden = true;
-      keyboardToggle.setAttribute('aria-expanded', 'false');
-      keyboardToggle.closest('.keyboard-sidebar').classList.remove('keyboard-open');
-      document.body.classList.remove('landscape-keyboard-open');
-    }
-    document.body.classList.remove('mobile-tools-open', 'mobile-keyboard-active');
-    if (document.getElementById('mobile-keyboard-tab').classList.contains('active')) {
-      document.querySelector('.tab-button[data-tab="home"]').click();
-    }
+    });
   });
   const layoutMenus = Array.from(document.querySelectorAll('.layout-menu-trigger')).map((button) => ({
     button,
@@ -6433,12 +8395,27 @@
     });
   });
 
-  const pageDimensions = {
-    Letter: [816, 1056],
-    Legal: [816, 1344],
-    Executive: [696, 1008],
-    A4: [794, 1123],
-    A5: [559, 794]
+  const pageDimensionsMm = {
+    Letter: [215.9, 279.4],
+    Legal: [215.9, 355.6],
+    Executive: [184.1, 266.7],
+    A4: [210, 297],
+    A5: [148, 210]
+  };
+  const millimetersToPixels = (millimeters) => millimeters * 96 / 25.4;
+  const pageDimensions = Object.fromEntries(
+    Object.entries(pageDimensionsMm).map(([name, dimensions]) =>
+      [name, dimensions.map(millimetersToPixels)])
+  );
+  const pageWidthInput = document.getElementById('page-width-input');
+  const pageHeightInput = document.getElementById('page-height-input');
+  const printPageStyle = document.createElement('style');
+  printPageStyle.textContent = '@page { size: 210mm 297mm; margin: 0; }';
+  document.head.append(printPageStyle);
+  const syncPageSizeInputs = () => {
+    const [width, height] = customPageDimensions || pageDimensions[pageSize];
+    pageWidthInput.value = (width / 96).toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+    pageHeightInput.value = (height / 96).toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
   };
   const applyPageDimensions = () => {
     const [portraitWidth, portraitHeight] = customPageDimensions || pageDimensions[pageSize];
@@ -6447,12 +8424,14 @@
     document.body.classList.toggle('landscape-page', landscape);
     editor.style.setProperty('--layout-page-width', `${width}px`);
     editor.style.setProperty('--layout-page-height', `${height}px`);
+    editor.style.width = `${width}px`;
     editor.style.minHeight = `${height}px`;
     syncPageBreakLayout();
     editor.dataset.pageSize = pageSize;
-    printPageStyle.textContent = customPageDimensions
-      ? `@page { size: ${width}px ${height}px; }`
-      : `@page { size: ${pageSize} ${landscape ? 'landscape' : 'portrait'}; }`;
+    const pageWidthMm = width * 25.4 / 96;
+    const pageHeightMm = height * 25.4 / 96;
+    printPageStyle.textContent =
+      `@page { size: ${pageWidthMm}mm ${pageHeightMm}mm; margin: 0; }`;
     syncRulers();
     queueAutoPagination();
   };
@@ -6466,7 +8445,9 @@
     button.addEventListener('click', () => {
       pageSize = button.dataset.pageSize;
       customPageDimensions = null;
+      syncPageSizeInputs();
       applyPageDimensions();
+      scheduleSave('Changed Page Size');
       closeLayoutMenu('size-menu');
     });
   });
@@ -6474,6 +8455,7 @@
     button.addEventListener('click', () => {
       landscape = button.dataset.pageOrientation === 'landscape';
       applyPageDimensions();
+      scheduleSave('Changed Page Orientation');
       closeLayoutMenu('orientation-menu');
     });
   });
@@ -6522,8 +8504,9 @@
       marginGuides.replaceChildren();
     }, 2000);
   };
-  const applyMargins = (values) => {
+  const applyMargins = (values, showGuides = true, saveChanges = true) => {
     const [top, bottom, left, right] = values;
+    pageMargins = [...values];
     editor.style.padding = `${top * 96}px ${right * 96}px ${bottom * 96}px ${left * 96}px`;
     editor.style.setProperty('--document-margin-top', `${top * 96}px`);
     editor.style.setProperty('--document-margin-bottom', `${bottom * 96}px`);
@@ -6533,7 +8516,8 @@
     marginFields.forEach((field, index) => { field.value = String(values[index]); });
     syncRulers();
     queueAutoPagination();
-    showMarginGuides(values);
+    if (showGuides) showMarginGuides(values);
+    if (saveChanges) scheduleSave('Changed Page Margins');
   };
   const marginPresets = {
     normal: [1, 1, 1, 1],
@@ -6542,6 +8526,9 @@
     wide: [1, 1, 2, 2],
     office: [1, 1, 1.25, 1.25]
   };
+  syncPageSizeInputs();
+  applyPageDimensions();
+  applyMargins(pageMargins, false, false);
   document.querySelectorAll('[data-margin-preset]').forEach((button) => {
     button.addEventListener('click', () => {
       applyMargins(marginPresets[button.dataset.marginPreset]);
@@ -6570,17 +8557,28 @@
     applyMargins(values);
     customMarginsDialog.close();
   });
+  const applyCustomPageSize = (closeMenu = false) => {
+    const width = Number(pageWidthInput.value);
+    const height = Number(pageHeightInput.value);
+    if (![width, height].every((value) =>
+      Number.isFinite(value) && value >= 4 && value <= 20)) return false;
+    customPageDimensions = [width * 96, height * 96];
+    pageSize = 'Custom';
+    applyPageDimensions();
+    if (closeMenu) closeLayoutMenu('size-menu');
+    return true;
+  };
+  [pageWidthInput, pageHeightInput].forEach((input) => {
+    input.addEventListener('input', () => {
+      if (pageWidthInput.value && pageHeightInput.value) applyCustomPageSize();
+    });
+  });
   document.getElementById('apply-custom-size').addEventListener('click', () => {
-    const width = Number(document.getElementById('page-width-input').value);
-    const height = Number(document.getElementById('page-height-input').value);
-    if (![width, height].every((value) => Number.isFinite(value) && value >= 4 && value <= 20)) {
+    if (!applyCustomPageSize(true)) {
       showToast('Enter page width and height between 4 and 20 inches.');
       return;
     }
-    customPageDimensions = [Math.round(width * 96), Math.round(height * 96)];
-    pageSize = 'Custom';
-    applyPageDimensions();
-    closeLayoutMenu('size-menu');
+    scheduleSave('Changed Page Size');
   });
   document.querySelectorAll('[data-page-border]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -6596,7 +8594,9 @@
     scheduleSave();
   });
   document.getElementById('page-color-input').addEventListener('input', (event) => {
-    editor.style.backgroundColor = event.currentTarget.value;
+    pageColor = event.currentTarget.value;
+    applyPageColor();
+    scheduleSave('Changed Page Color');
   });
   function setZoom(value) {
     zoom = Math.max(70, Math.min(130, value));
@@ -6612,9 +8612,6 @@
     document.getElementById(id).addEventListener('click', () => setZoom(zoom + 10));
   });
   document.querySelector('.status-fit').addEventListener('click', () => setZoom(100));
-  const printPageStyle = document.createElement('style');
-  printPageStyle.textContent = '@page { size: A4 portrait; }';
-  document.head.append(printPageStyle);
   const downloadButton = document.getElementById('download-button');
   const downloadPanel = document.getElementById('download-panel');
   const exportFormat = document.getElementById('export-format');
@@ -7184,12 +9181,16 @@
             : '#697586';
           document.getElementById('page-border-color-input').value = pageBorderColor;
           applyPageBorder();
+          pageColor = /^#[\da-f]{6}$/i.test(project.pageColor || '') ? project.pageColor : '#ffffff';
+          applyPageColor();
         } else {
           editor.replaceChildren();
           pageBorderStyle = 'none';
           pageBorderColor = '#697586';
           document.getElementById('page-border-color-input').value = pageBorderColor;
           applyPageBorder();
+          pageColor = '#ffffff';
+          applyPageColor();
           const lines = contents.split(/\r?\n/);
           lines.forEach((line, index) => {
             editor.append(document.createTextNode(line));
@@ -7216,22 +9217,38 @@
     const modifier = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
     const inEditor = editor.contains(event.target);
+    const targetElement = event.target instanceof Element ? event.target : event.target.parentElement;
+    const selectionNode = window.getSelection()?.anchorNode;
+    const selectionElement = selectionNode instanceof Element ? selectionNode : selectionNode?.parentElement;
+    const editingTextBox = targetElement?.closest('.editor-textbox[contenteditable="true"]') ||
+      selectionElement?.closest('.editor-textbox[contenteditable="true"]');
+    const activeTextBox = activeShape && editor.contains(activeShape) &&
+      activeShape.dataset.editorTextbox === 'true';
+    if (editingTextBox && (key === 'delete' || key === 'backspace')) {
+      if (key === 'backspace' && activeTextBox && !activeShape.textContent) event.preventDefault();
+      return;
+    }
+    if (key === 'backspace' && activeTextBox && !targetElement?.closest('input, textarea, select')) {
+      event.preventDefault();
+      return;
+    }
     const prevent = (action) => {
       event.preventDefault();
       action();
     };
     const shapeSelected = activeShape && editor.contains(activeShape) &&
-      !event.target.closest('input, textarea, select');
+      !targetElement?.closest('input, textarea, select');
     const editingShapeText = shapeSelected && activeShape.isContentEditable &&
-      (activeShape === event.target || activeShape.contains(event.target));
+      targetElement && activeShape.contains(targetElement);
     if (shapeSelected && !editingShapeText && (key === 'delete' || key === 'backspace')) {
       prevent(removeSelectedShape);
       return;
     }
     const imageSelected = activeImage && editor.contains(activeImage) &&
-      !event.target.closest('input, textarea, select, button');
+      !targetElement?.closest('input, textarea, select, button');
     const watermarkSelected = activeWatermark && editor.contains(activeWatermark) &&
-      !event.target.closest('input, textarea, select, button');
+      activeWatermark.dataset.watermarkLocked !== 'true' &&
+      !targetElement?.closest('input, textarea, select, button');
     if (watermarkSelected && (key === 'delete' || key === 'backspace')) {
       prevent(removeSelectedWatermark);
       return;
