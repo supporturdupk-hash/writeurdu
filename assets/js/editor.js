@@ -1822,6 +1822,9 @@
     if (range && range.collapsed && lastFormattedSpan && editor.contains(lastFormattedSpan)) {
       if (lastFormattedSpan.dataset.formatCaret === 'true') {
         lastFormattedSpan.style.setProperty(property, value);
+        if (property === 'background-color') {
+          lastFormattedSpan.style.setProperty('--text-highlight-color', value);
+        }
         savedEditorRange = selection.getRangeAt(0).cloneRange();
         scheduleSave();
         updateCounts();
@@ -1834,6 +1837,9 @@
     if (range && !range.collapsed && lastFormattedSpan && editor.contains(lastFormattedSpan) &&
       range.toString() === lastFormattedSpan.textContent) {
       lastFormattedSpan.style.setProperty(property, value);
+      if (property === 'background-color') {
+        lastFormattedSpan.style.setProperty('--text-highlight-color', value);
+      }
       preserveSelectedRange(range);
       scheduleSave();
       updateCounts();
@@ -1846,6 +1852,9 @@
     }
     const span = document.createElement('span');
     span.style.setProperty(property, value);
+    if (property === 'background-color') {
+      span.style.setProperty('--text-highlight-color', value);
+    }
     const isCollapsed = range.collapsed;
     if (isCollapsed) {
       span.dataset.formatCaret = 'true';
@@ -1859,6 +1868,7 @@
         if (ancestor.style && ancestor.style.getPropertyValue(property) &&
           range.toString() === ancestor.textContent) {
           ancestor.style.removeProperty(property);
+          if (property === 'background-color') ancestor.style.removeProperty('--text-highlight-color');
           if (!ancestor.style.length) ancestor.removeAttribute('style');
         }
         ancestor = parent;
@@ -1866,6 +1876,7 @@
       const contents = range.extractContents();
       contents.querySelectorAll('[style]').forEach((node) => {
         node.style.removeProperty(property);
+        if (property === 'background-color') node.style.removeProperty('--text-highlight-color');
         if (!node.style.length) node.removeAttribute('style');
         if (node.tagName === 'SPAN' && node.attributes.length === 0) {
           node.replaceWith(...node.childNodes);
@@ -2614,6 +2625,10 @@
 
   function runCommand(command, value = null) {
     focusEditor();
+    if (command === 'hiliteColor' && typeof value === 'string') {
+      applyInlineStyle('background-color', value);
+      return;
+    }
     let selection = window.getSelection();
     if (['bold', 'italic', 'underline'].includes(command) && selection?.isCollapsed &&
       selection.rangeCount && editor.contains(selection.anchorNode) &&
@@ -5193,6 +5208,15 @@
       top: (bounds.top + bounds.bottom) / 2 + x * scaleX * Math.sin(angle) + y * scaleY * Math.cos(angle)
     };
   };
+  const updateWatermarkRotationIndicator = (watermark) => {
+    const rotation = Number(watermark.dataset.watermarkRotation) || 0;
+    const point = getWatermarkHandlePoint(watermark, 0,
+      -watermark.offsetHeight / 2 - 54);
+    imageRotationIndicator.textContent = `${rotation}°`;
+    imageRotationIndicator.style.left = `${point.left}px`;
+    imageRotationIndicator.style.top = `${point.top}px`;
+    imageRotationIndicator.hidden = false;
+  };
   const clampFloatingHandle = (handle) => {
     const workspace = document.querySelector('.document-workspace');
     if (!workspace) return;
@@ -5508,6 +5532,7 @@
           event.clientX - (bounds.left + bounds.right) / 2) * 180 / Math.PI,
         rotation: Number(activeWatermark.dataset.watermarkRotation) || 0
       };
+      updateWatermarkRotationIndicator(activeWatermark);
       return;
     }
     const resizeHandle = event.target.closest('[data-watermark-resize-handle]');
@@ -5542,6 +5567,7 @@
       drag.watermark.style.rotate = `${drag.rotation}deg`;
       refreshWatermarkManipulators(drag.watermark);
       positionWatermarkToolbar(drag.watermark);
+      updateWatermarkRotationIndicator(drag.watermark);
       event.preventDefault();
       return;
     }
@@ -5566,6 +5592,7 @@
   const finishWatermarkDrag = (event) => {
     if (watermarkRotateDrag && watermarkRotateDrag.pointerId === event.pointerId) {
       watermarkRotateDrag = null;
+      imageRotationIndicator.hidden = true;
       scheduleSave();
     }
     if (watermarkResizeDrag && watermarkResizeDrag.pointerId === event.pointerId) {
@@ -8449,14 +8476,6 @@
       applyPageDimensions();
       scheduleSave('Changed Page Size');
       closeLayoutMenu('size-menu');
-    });
-  });
-  document.querySelectorAll('[data-page-orientation]').forEach((button) => {
-    button.addEventListener('click', () => {
-      landscape = button.dataset.pageOrientation === 'landscape';
-      applyPageDimensions();
-      scheduleSave('Changed Page Orientation');
-      closeLayoutMenu('orientation-menu');
     });
   });
   const marginFields = ['top', 'bottom', 'left', 'right'].map((side) =>

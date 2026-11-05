@@ -29,7 +29,7 @@
     <header class="policy-header">
       <p class="section-kicker">Urdu Writer help</p>
       <h1>How to write and manage Urdu documents online</h1>
-      <p>This guide explains a practical workflow for composing Urdu, formatting a document, using the included templates, and keeping a copy of your work.</p>
+      <p>This guide explains a practical workflow for composing Urdu, formatting a document, using the included templates, and keeping a copy of your work. The editor adapts to both desktop and mobile screens; the same document tools are available on either.</p>
     </header>
     <article class="policy-content">
       <nav class="guide-toc" aria-label="On this page">
@@ -59,8 +59,8 @@
       <p>Switch the Urdu toggle off to type English characters. The Urdu and symbol keys on the on-screen keyboard remain available, and you can paste Urdu text from another source into the editor.</p>
 
       <h2 id="format">3. Format right-to-left text</h2>
-      <p>Use the font picker to choose from 26 Arabic and Urdu fonts, including Noto Nastaliq Urdu, Gulzar, Amiri, Rakkas, Alexandria, and Noto Serif Arabic. Change text size, then apply bold, italic, underline, text color, or highlighting. Open the highlight-color palette and choose <strong>No color</strong> to remove highlighting from selected text.</p>
-      <p>Paragraph controls provide lists, alignment, spacing, and text direction. To set a custom line spacing, open the line-spacing menu, enter a value from 0.5 to 10, and choose <strong>Apply custom spacing</strong>. The Insert tab provides tables, pictures, page numbers, headers, footers, and emoji.</p>
+      <p>Use the font picker to choose from 26 Arabic and Urdu fonts, including Noto Nastaliq Urdu, Gulzar, Amiri, Rakkas, Alexandria, and Noto Serif Arabic. Change text size, then apply bold, italic, underline, text color, or highlighting. Select the text first, then choose a color from the highlight palette or use its custom-color option. Highlighting applies to the selection and is saved with the document; choose <strong>No color</strong> to remove it.</p>
+      <p>Paragraph controls provide lists, alignment, spacing, and text direction. To set a custom line spacing, open the line-spacing menu, enter a value from 0.5 to 10, and choose <strong>Apply custom spacing</strong>. When a list item is empty, press Backspace to leave the list and continue in a regular paragraph. The Insert tab provides tables, pictures, page numbers, headers, footers, watermarks, and emoji.</p>
       <p>For a mixed Urdu and English paragraph, check the direction and alignment after pasting. Select the affected paragraph and apply the direction that makes its reading order clear. Preview the complete page before printing; line wrapping can change with fonts and paper settings.</p>
 
       <h2 id="templates">4. Adapt a template</h2>
@@ -77,8 +77,15 @@
       <p>Local browser storage is not cloud storage. Clearing site data, using private browsing, changing browsers, or using another device can make saved documents unavailable. Keep an exported backup of anything you cannot afford to lose.</p>
 
       <h2 id="tools">6. Use the editor tools</h2>
-      <p>The Layout tab controls page margins, orientation, paper size, columns, line numbers, page borders, and page color. Choose Preview to inspect the document before printing. On the Insert tab, click <strong>Header</strong> or <strong>Footer</strong> to add that section; click the same button again to remove it. Double-click header or footer text to edit it. While editing one, the document body is temporarily dimmed and locked; click in the body to switch back. Select header or footer text and use the alignment controls to align it left, center, or right. Headers and footers repeat on printed pages.</p>
-      <p>To insert a table, place the caret in the document and choose its size from the Table menu. The table is placed after the current text block so it does not replace text in the middle of a paragraph; existing text stays intact and may move to make room. Select a table cell to add or remove rows and columns, change cell color and text alignment, set borders, or adjust table width. Select an inserted picture to resize it, choose text wrapping, align it, or remove it. The View tab also provides ruler visibility, dark mode, and zoom.</p>
+      <h3>Page layout and color</h3>
+      <p>The Layout tab provides page size, margins, columns, line numbers, page borders, and Page Color. The orientation control is no longer available. Choose a preset or custom page color from its palette; the eyedropper can pick a color from the screen in supported browsers. Use <strong>No color</strong> to restore white. Page color is saved with the document. Choose Preview to inspect the document before printing.</p>
+      <h3>Headers and footers</h3>
+      <p>On the Insert tab, use <strong>Header</strong> or <strong>Footer</strong> to add the section, then double-click its text to edit it. Clicking elsewhere inside the header or footer does not exit editing. To return to the document body, click in the page’s body area outside the header or footer band. Select header or footer text and use the alignment controls to align it left, center, or right. Headers and footers repeat on printed pages.</p>
+      <h3>Pictures and watermarks</h3>
+      <p>Choose <strong>Picture</strong> on the Insert tab and select an image file. It appears near the center of the page area currently visible on screen, so you can see that it was inserted. The selected picture can be dragged to move, resized with its corner handles, rotated, wrapped, aligned, and formatted from Picture Format. Supported files are PNG, JPEG, GIF, or WebP up to 2 MB.</p>
+      <p>A document can contain one watermark at a time. Choose <strong>Watermark</strong> to add text or an image; if a watermark already exists, that control selects it rather than adding a second. Click the watermark to select it and show its controls. Text watermarks stay centered as their text wraps onto additional lines. Use the handles to resize or rotate, the options to change text or opacity, and the lock control to protect it from changes. The current rotation angle appears while rotating. Scrolling the document hides the watermark handles; click the watermark again to show them. Delete the existing watermark before adding a replacement.</p>
+      <h3>Tables and other tools</h3>
+      <p>To insert a table, place the caret in the document and choose its size from the Table menu. The table is placed after the current text block so it does not replace text in the middle of a paragraph; existing text stays intact and may move to make room. Select a table cell to add or remove rows and columns, change cell color and text alignment, set borders, or adjust table width. The View tab also provides ruler visibility, dark mode, and zoom.</p>
       <p>Use Urdu → English to transliterate selected text or, with no selection, the full document into Roman Urdu. The Urdu typing toggle switches English-key Urdu typing on or off. Open the on-screen keyboard when you need Urdu, English, or symbol keys. Use Find to locate text and Replace to change matching text.</p>
 
       <h2 id="troubleshoot">7. Troubleshoot common issues</h2>
@@ -88,10 +95,14 @@
       <p>Check that you are using the same browser profile and device where you wrote it. If site data was cleared, the local copy may be gone. Open any TXT or Urdu Writer JSON backup you previously exported.</p>
       <h3>The printed page looks different</h3>
       <p>Review the browser print preview, page size, and margins. Confirm the correct Urdu font is available and let web fonts finish loading before printing. Adjust text size and page layout in the editor as needed.</p>
+      <h3>My highlight is missing</h3>
+      <p>Select the text before choosing a highlight color. The color is applied to the selection and saved with the document. If no text is selected, the chosen color is set for text you highlight next.</p>
+      <h3>I cannot see the watermark controls</h3>
+      <p>Click the watermark to select it. Its handles are hidden when you scroll; click the watermark again to restore them. If you want a different watermark, select and delete the existing one first.</p>
 
       <p class="policy-callout">This guide describes the current browser-based editor. Sign-in, cloud synchronization, and online feedback storage are not active until their backend services are configured.</p>
       <p>Found a bug or unclear instruction? Use the <a href="feedback.html">Feedback page</a> or visit <a href="contact.html">Contact Us</a>. Feedback cannot be received online until its database is configured.</p>
-      <p class="policy-updated">Last updated: November 1, 2026</p>
+      <p class="policy-updated">Last updated: November 5, 2026</p>
     </article>
   </main>
   <footer class="home-footer">
