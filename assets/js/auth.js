@@ -90,7 +90,7 @@
     return runAuthRequest('Google sign-in failed.', async (supabaseClient) => {
       const { data, error } = await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: getRedirectUrl() }
+        options: { redirectTo: window.location.origin }
       });
       if (error) throw error;
       console.info('Supabase accepted the Google sign-in request.');

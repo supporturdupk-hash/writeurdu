@@ -39,7 +39,7 @@ The public key is intended for browser use; the database's row-level security is
 3. Configure `assets/js/feedback-config.js` with the project URL and public anon/publishable key as described above. The home page loads this shared config for auth as well as feedback.
 4. Publish the site over HTTPS. Never expose a service-role or secret key in browser code.
 
-The home page provides email/password sign-up and sign-in, Google OAuth, current-session profile display, and sign-out. It passes the current page URL (including its active localhost port) as `redirectTo`; the Supabase client detects the OAuth callback and exchanges its code for a session using PKCE. Email confirmation behavior follows the Supabase project's Auth settings. Account credentials and profile information are handled by Supabase; documents remain in browser storage and are not associated with the account. If `redirectTo` is omitted, Supabase uses the configured Site URL; if a supplied redirect is not allowlisted, the redirect is rejected.
+The home page provides email/password sign-up and sign-in, Google OAuth, current-session profile display, and sign-out. Google OAuth uses `window.location.origin` as `redirectTo`, preserving the current localhost port or live domain. The Supabase client detects the OAuth callback and exchanges its code for a session using PKCE. Email confirmation behavior follows the Supabase project's Auth settings. Account credentials and profile information are handled by Supabase; documents remain in browser storage and are not associated with the account. If `redirectTo` is omitted, Supabase uses the configured Site URL; if a supplied redirect is not allowlisted, the redirect is rejected.
 
 ## 5. Publish and test
 
