@@ -124,6 +124,32 @@
     });
   }
 
+  async function requestPasswordReset(email) {
+    return runAuthRequest('Could not send the password reset email.', async (supabaseClient) => {
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password.html`
+      });
+      if (error) throw error;
+      return true;
+    });
+  }
+
+  async function getSession() {
+    return runAuthRequest('Could not verify the password reset session.', async (supabaseClient) => {
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) throw error;
+      return data.session;
+    });
+  }
+
+  async function updatePassword(password) {
+    return runAuthRequest('Could not update your password.', async (supabaseClient) => {
+      const { data, error } = await supabaseClient.auth.updateUser({ password });
+      if (error) throw error;
+      return data.user;
+    });
+  }
+
   async function checkUserSession() {
     if (!client) {
       updateProfile(null);
@@ -133,11 +159,7 @@
       return null;
     }
 
-    const result = await runAuthRequest('Could not check the current Supabase session.', async (supabaseClient) => {
-      const { data, error } = await supabaseClient.auth.getSession();
-      if (error) throw error;
-      return data.session;
-    });
+    const result = await getSession();
     updateProfile(result && result.user ? result.user : null);
     return result && result.user ? result.user : null;
   }
@@ -158,7 +180,14 @@
   window.signInWithGoogle = signInWithGoogle;
   window.checkUserSession = checkUserSession;
   window.signOut = signOut;
-  window.URDU_WRITER_AUTH = { signInWithEmail, signUpWithEmail };
+  window.URDU_WRITER_AUTH = {
+    isConfigured: Boolean(client),
+    signInWithEmail,
+    signUpWithEmail,
+    requestPasswordReset,
+    getSession,
+    updatePassword
+  };
 
   if (client) {
     client.auth.onAuthStateChange((_event, session) => {

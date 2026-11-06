@@ -444,12 +444,18 @@
   const authModal = document.getElementById('auth-modal');
   const loginForm = document.getElementById('login-form');
   const signupForm = document.getElementById('signup-form');
+  const forgotPasswordForm = document.getElementById('forgot-password-form');
   const authTitle = document.getElementById('auth-title');
   function setAuthMode(mode) {
     const signup = mode === 'signup';
+    const forgotPassword = mode === 'forgot';
     loginForm.hidden = signup;
     signupForm.hidden = !signup;
-    authTitle.textContent = signup ? 'Create your account' : 'Welcome back';
+    forgotPasswordForm.hidden = !forgotPassword;
+    document.querySelector('.auth-switch').hidden = forgotPassword;
+    document.getElementById('auth-separator').hidden = forgotPassword;
+    document.getElementById('google-signin').hidden = forgotPassword;
+    authTitle.textContent = signup ? 'Create your account' : (forgotPassword ? 'Reset your password' : 'Welcome back');
     document.querySelectorAll('[data-auth-mode]').forEach((tab) => {
       const active = tab.dataset.authMode === mode;
       tab.classList.toggle('active', active);
@@ -469,6 +475,38 @@
   });
   document.querySelectorAll('[data-auth-mode]').forEach((tab) => {
     tab.addEventListener('click', () => setAuthMode(tab.dataset.authMode));
+  });
+  document.getElementById('forgot-password-link').addEventListener('click', () => {
+    forgotPasswordForm.elements.email.value = loginForm.elements.email.value;
+    document.getElementById('auth-notice').textContent = '';
+    setAuthMode('forgot');
+    forgotPasswordForm.elements.email.focus();
+  });
+  document.getElementById('back-to-login').addEventListener('click', () => {
+    document.getElementById('auth-notice').textContent = '';
+    setAuthMode('login');
+    loginForm.elements.email.focus();
+  });
+  forgotPasswordForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!forgotPasswordForm.reportValidity()) return;
+    const auth = window.URDU_WRITER_AUTH;
+    if (!auth || !auth.isConfigured) {
+      const status = document.getElementById('auth-notice');
+      status.textContent = 'Password reset is unavailable until Supabase is configured.';
+      status.className = 'auth-notice error';
+      return;
+    }
+    const submitButton = forgotPasswordForm.querySelector('[type="submit"]');
+    submitButton.disabled = true;
+    const result = await auth.requestPasswordReset(forgotPasswordForm.elements.email.value);
+    submitButton.disabled = false;
+    if (result) {
+      const status = document.getElementById('auth-notice');
+      status.textContent = 'If an account exists for that email, a password reset link is on its way.';
+      status.className = 'auth-notice success';
+      showToast('If an account exists for that email, a password reset link is on its way.');
+    }
   });
   signupForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -525,6 +563,10 @@
   document.getElementById('footer-year').textContent = String(new Date().getFullYear());
   renderTemplatePreviews();
   loadSavedDocuments();
+  if (new URLSearchParams(window.location.search).get('password-reset') === 'success') {
+    window.history.replaceState({}, '', window.location.pathname);
+    showToast('Your password has been updated.');
+  }
   window.addEventListener('storage', (event) => {
     if (event.key === STORAGE_KEY || event.key === DOCUMENTS_KEY) loadSavedDocuments();
   });

@@ -270,6 +270,7 @@
         <label>Email<input name="email" type="email" autocomplete="email" required></label>
         <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
         <button class="auth-submit" type="submit">Login</button>
+        <button id="forgot-password-link" class="auth-text-button" type="button">Forgot password?</button>
       </form>
       <form id="signup-form" class="auth-form" hidden>
         <label>Name<input name="name" type="text" autocomplete="name" required></label>
@@ -278,7 +279,12 @@
         <label>Confirm password<input name="confirm-password" type="password" autocomplete="new-password" minlength="8" required></label>
         <button class="auth-submit" type="submit">Create account</button>
       </form>
-      <div class="auth-separator"><span>or continue with</span></div>
+      <form id="forgot-password-form" class="auth-form" hidden>
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+        <button class="auth-submit" type="submit">Send Reset Link</button>
+        <button id="back-to-login" class="auth-text-button" type="button">Back to login</button>
+      </form>
+      <div id="auth-separator" class="auth-separator"><span>or continue with</span></div>
       <button id="google-signin" class="google-signin" type="button"><img src="assets/Media/google-icon-logo-svgrepo-com.svg" alt="">Continue with Google</button>
       <p id="auth-notice" class="auth-notice" role="status" aria-live="polite">Checking authentication settings…</p>
     </section>
