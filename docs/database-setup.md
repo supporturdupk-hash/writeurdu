@@ -34,12 +34,12 @@ The public key is intended for browser use; the database's row-level security is
 
 ## 4. Configure authentication
 
-1. In **Authentication → Providers**, enable Email and Google. Configure Google OAuth credentials in Google Cloud; use the Supabase project's Auth callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`) as the authorized redirect URI in Google Cloud.
-2. In **Authentication → URL Configuration**, add the deployed home page URL to the allowed redirect URLs. Add local development URLs if needed, for example `http://localhost:8000/**`.
+1. In **Authentication → Providers**, enable Email and Google. In Google Cloud, add your app origin (for example `http://localhost:5500`) as an authorized JavaScript origin, and use the Supabase project's Auth callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`) as the authorized redirect URI. The Google callback is Supabase's URL, not your local app URL.
+2. In **Authentication → URL Configuration**, set the **Site URL** to your production home page; it is the fallback when no `redirectTo` is supplied. Add the deployed home page URL to the allowed redirect URLs. Also add the exact local development origin and port you use, for example `http://localhost:5500/**` or `http://localhost:3000/**`. If your development server changes ports, allow the new URL in Supabase too.
 3. Configure `assets/js/feedback-config.js` with the project URL and public anon/publishable key as described above. The home page loads this shared config for auth as well as feedback.
 4. Publish the site over HTTPS. Never expose a service-role or secret key in browser code.
 
-The home page provides email/password sign-up and sign-in, Google OAuth, current-session profile display, and sign-out. Email confirmation behavior follows the Supabase project's Auth settings. OAuth redirects back to the current home page. Account credentials and profile information are handled by Supabase; documents remain in browser storage and are not associated with the account.
+The home page provides email/password sign-up and sign-in, Google OAuth, current-session profile display, and sign-out. It passes the current page URL (including its active localhost port) as `redirectTo`; the Supabase client detects the OAuth callback and exchanges its code for a session using PKCE. Email confirmation behavior follows the Supabase project's Auth settings. Account credentials and profile information are handled by Supabase; documents remain in browser storage and are not associated with the account. If `redirectTo` is omitted, Supabase uses the configured Site URL; if a supplied redirect is not allowlisted, the redirect is rejected.
 
 ## 5. Publish and test
 

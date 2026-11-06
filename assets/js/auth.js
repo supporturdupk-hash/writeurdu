@@ -15,7 +15,12 @@
 
   if (SUPABASE_URL && SUPABASE_ANON_KEY && clientFactory) {
     try {
-      client = clientFactory(SUPABASE_URL, SUPABASE_ANON_KEY);
+      client = clientFactory(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          flowType: 'pkce',
+          detectSessionInUrl: true
+        }
+      });
     } catch (error) {
       initializationError = error;
       console.error('Supabase Auth could not initialize with the configured project settings.', error);
@@ -32,7 +37,7 @@
   }
 
   function getRedirectUrl() {
-    return `${window.location.origin}${window.location.pathname}`;
+    return new URL(window.location.pathname, window.location.origin).href;
   }
 
   function updateProfile(user) {
@@ -85,7 +90,7 @@
     return runAuthRequest('Google sign-in failed.', async (supabaseClient) => {
       const { data, error } = await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin }
+        options: { redirectTo: getRedirectUrl() }
       });
       if (error) throw error;
       console.info('Supabase accepted the Google sign-in request.');
